@@ -5,13 +5,33 @@ import secrets
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 
 
+def _normalise_db_url(url: str) -> str:
+    """Render gives us 'postgres://…' but SQLAlchemy 2 requires 'postgresql://…'.
+       Also force SSL when talking to a managed Postgres unless already set."""
+    if not url:
+        return url
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url
+
+
 class Config:
     SECRET_KEY = os.environ.get("FLASK_SECRET") or "procam-attn-dev-secret-change-me"
     SQLALCHEMY_DATABASE_URI = (
-        os.environ.get("DATABASE_URL")
+        _normalise_db_url(os.environ.get("DATABASE_URL", ""))
         or "sqlite:///" + os.path.join(BASEDIR, "instance", "attendance.db")
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    # Render's managed Postgres silently kills idle connections after ~5 min.
+    # SQLAlchemy's pool then serves a dead connection on the next request
+    # → "SSL SYSCALL error: EOF detected". pool_pre_ping issues a tiny
+    # SELECT 1 before reusing any connection so dead ones are replaced.
+    # pool_recycle proactively closes connections older than the limit.
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,        # under Render's ~300s idle cap
+    }
 
     # JWT for the mobile API
     JWT_SECRET = os.environ.get("JWT_SECRET") or "procam-attn-jwt-dev-" + secrets.token_hex(8)
