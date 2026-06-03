@@ -108,16 +108,15 @@ def _patch_schema():
         inspector = inspect(db.engine)
     except Exception:
         return
+    # Use TIMESTAMP on Postgres, DATETIME on SQLite — both work everywhere.
+    dialect = db.engine.dialect.name
+    DT = "TIMESTAMP" if dialect == "postgresql" else "DATETIME"
     expected_columns = [
-        # (table_name, column_name, SQLite DDL fragment)
+        # (table_name, column_name, DDL fragment — must be valid on both dialects)
         ("skills", "category", "VARCHAR(20) DEFAULT 'Unskilled' NOT NULL"),
-        # Multi-pose face enrolment — number of distinct pose captures stored.
-        # Legacy single-descriptor rows default to 1, still match by min-distance.
         ("face_templates", "pose_count", "INTEGER DEFAULT 1 NOT NULL"),
-        # Distinct IN/OUT timestamps on attendance
-        ("attendance", "punch_in_at",  "DATETIME"),
-        ("attendance", "punch_out_at", "DATETIME"),
-        # Agency: HR-only vs vendor+client dual approval
+        ("attendance", "punch_in_at",  DT),
+        ("attendance", "punch_out_at", DT),
         ("agencies", "approver_mode", "VARCHAR(16) DEFAULT 'hr_only' NOT NULL"),
     ]
     for table, column, coldef in expected_columns:
