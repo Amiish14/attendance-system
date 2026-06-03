@@ -144,14 +144,27 @@ def _register_setup_routes(app):
     from flask import jsonify, request
     from models import User
 
-    SETUP_TOKEN = os.environ.get("SETUP_TOKEN", "")
-
     def _guard():
-        token = request.args.get("token") or ""
-        if not SETUP_TOKEN:
+        # Read SETUP_TOKEN FRESH on every request (not captured at boot) so an
+        # env-var change takes effect even if Render re-uses the worker process.
+        # Strip whitespace from both sides — Render's UI sometimes preserves a
+        # trailing newline / space when the value is pasted from a password
+        # manager, which silently breaks exact-match comparison.
+        expected = (os.environ.get("SETUP_TOKEN", "") or "").strip()
+        token = (request.args.get("token") or "").strip()
+        if not expected:
             return jsonify(error="setup routes disabled — set SETUP_TOKEN env var"), 403
-        if token != SETUP_TOKEN:
-            return jsonify(error="bad token"), 403
+        if token != expected:
+            # Show lengths (not the values) so we can see whether there's a
+            # hidden trailing character on either side.
+            return jsonify(
+                error="bad token",
+                got_len=len(token),
+                expected_len=len(expected),
+                hint=("lengths differ — likely a hidden whitespace char in env var"
+                      if len(token) != len(expected)
+                      else "same length but value differs — env var content wrong"),
+            ), 403
         return None
 
     @app.route("/setup/health")
