@@ -176,6 +176,38 @@ def _register_setup_routes(app):
             })
         return jsonify(info)
 
+    @app.route("/setup/reset-all-workers")
+    def setup_reset_all_workers():
+        """Reset every Worker user's password back to their username
+           (i.e. emp_code) and force a new-password reset on next login.
+           Optional ?clear_faces=1 also wipes their face templates so they
+           must re-enrol from scratch.
+        """
+        from models import ROLE_WORKER as RW, FaceTemplate
+        guard = _guard()
+        if guard: return guard
+        clear_faces = request.args.get("clear_faces") in ("1", "true", "yes")
+        workers = User.query.filter_by(role=RW).all()
+        reset_n = 0
+        for u in workers:
+            u.set_password(u.username)       # pw == emp_code (PRERNA convention)
+            u.must_change_password = True
+            u.is_active = True
+            reset_n += 1
+        faces_wiped = 0
+        if clear_faces:
+            faces_wiped = FaceTemplate.query.delete()
+        db.session.commit()
+        return jsonify(
+            ok=True, role_reset="Worker",
+            users_reset=reset_n,
+            face_templates_wiped=faces_wiped,
+            note=("Every worker: username=pw=emp_code; will be forced to change "
+                  "password on next login. " +
+                  ("Faces wiped — they must re-enrol." if clear_faces else
+                   "Existing face enrolments preserved."))
+        )
+
     @app.route("/setup/reset-admin")
     def setup_reset_admin():
         guard = _guard()
