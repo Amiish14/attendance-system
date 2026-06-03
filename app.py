@@ -97,6 +97,9 @@ def create_app(config_class=Config):
         _patch_schema()
         _ensure_admin()
 
+    # One-shot recovery endpoints — only live when SETUP_TOKEN env var is set
+    _register_setup_routes(app)
+
     return app
 
 
@@ -111,18 +114,93 @@ def _ensure_admin():
     from models import User
     username = os.environ.get("ADMIN_USERNAME", "admin")
     password = os.environ.get("ADMIN_PASSWORD", "admin123")
-    if User.query.filter_by(username=username).first():
+    existing = User.query.filter_by(username=username).first()
+    if existing:
+        print(f"[bootstrap] admin user '{username}' already exists "
+              f"(id={existing.id}, active={existing.is_active}, "
+              f"hash_len={len(existing.password_hash or '')})")
         return
     u = User(username=username, display_name="HR Admin",
              role=ROLE_ADMIN, is_active=True, must_change_password=True)
     u.set_password(password)
+    print(f"[bootstrap] hashing test: set→verify={u.check_password(password)}")
     db.session.add(u)
     try:
         db.session.commit()
         print(f"[bootstrap] admin user '{username}' created (must_change_password=True)")
     except Exception as e:
         db.session.rollback()
-        print(f"[bootstrap] could not create admin: {e}")
+        print(f"[bootstrap] could not create admin: {type(e).__name__}: {e}")
+
+
+def _register_setup_routes(app):
+    """One-shot recovery endpoints guarded by SETUP_TOKEN env var. Hit:
+         /setup/health?token=<SETUP_TOKEN>
+       to see whether admin exists, and
+         /setup/reset-admin?token=<SETUP_TOKEN>&password=<new>
+       to forcibly create-or-reset the admin user. Remove SETUP_TOKEN from
+       Render's env vars once you're done — that disables these routes.
+    """
+    from flask import jsonify, request
+    from models import User
+
+    SETUP_TOKEN = os.environ.get("SETUP_TOKEN", "")
+
+    def _guard():
+        token = request.args.get("token") or ""
+        if not SETUP_TOKEN:
+            return jsonify(error="setup routes disabled — set SETUP_TOKEN env var"), 403
+        if token != SETUP_TOKEN:
+            return jsonify(error="bad token"), 403
+        return None
+
+    @app.route("/setup/health")
+    def setup_health():
+        guard = _guard()
+        if guard: return guard
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        u = User.query.filter_by(username=admin_username).first()
+        info = {
+            "db_uri_kind": app.config["SQLALCHEMY_DATABASE_URI"].split("://", 1)[0],
+            "total_users": User.query.count(),
+            "looking_for": admin_username,
+            "admin_exists": bool(u),
+        }
+        if u:
+            info.update({
+                "id": u.id, "is_active": u.is_active,
+                "must_change_password": u.must_change_password,
+                "role": u.role,
+                "hash_length": len(u.password_hash or ""),
+                "hash_prefix": (u.password_hash or "")[:7],
+            })
+        return jsonify(info)
+
+    @app.route("/setup/reset-admin")
+    def setup_reset_admin():
+        guard = _guard()
+        if guard: return guard
+        from models import ROLE_ADMIN as RA
+        username = os.environ.get("ADMIN_USERNAME", "admin")
+        new_pw = request.args.get("password") or "admin123"
+        u = User.query.filter_by(username=username).first()
+        created = False
+        if not u:
+            u = User(username=username, display_name="HR Admin",
+                     role=RA, is_active=True, must_change_password=True)
+            db.session.add(u); created = True
+        u.set_password(new_pw)
+        u.is_active = True
+        u.must_change_password = True
+        db.session.commit()
+        # Verify the hash works
+        ok = u.check_password(new_pw)
+        return jsonify(
+            created=created, username=username,
+            password_set=True, verify_after_set=ok,
+            hash_prefix=u.password_hash[:7],
+            message=("CREATED" if created else "RESET") + f" — sign in as '{username}' with the password you supplied.",
+        )
 
 
 def _patch_schema():
