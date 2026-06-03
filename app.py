@@ -90,12 +90,39 @@ def create_app(config_class=Config):
                 return redirect(url_for("attendance.enroll_face"))
         return redirect(url_for("attendance.worker_home"))
 
-    # auto-create tables on first boot
+    # auto-create tables on first boot + ensure an HR admin exists.
+    # This is idempotent — safe to run every time the worker starts.
     with app.app_context():
         db.create_all()
         _patch_schema()
+        _ensure_admin()
 
     return app
+
+
+def _ensure_admin():
+    """Make sure at least one HR-admin user exists. Used on first deploy so the
+       owner can sign in immediately. If admin already exists, no-op.
+
+       Credentials come from env vars when set:
+         ADMIN_USERNAME (default 'admin')
+         ADMIN_PASSWORD (default 'admin123' — change on first login)
+    """
+    from models import User
+    username = os.environ.get("ADMIN_USERNAME", "admin")
+    password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    if User.query.filter_by(username=username).first():
+        return
+    u = User(username=username, display_name="HR Admin",
+             role=ROLE_ADMIN, is_active=True, must_change_password=True)
+    u.set_password(password)
+    db.session.add(u)
+    try:
+        db.session.commit()
+        print(f"[bootstrap] admin user '{username}' created (must_change_password=True)")
+    except Exception as e:
+        db.session.rollback()
+        print(f"[bootstrap] could not create admin: {e}")
 
 
 def _patch_schema():
