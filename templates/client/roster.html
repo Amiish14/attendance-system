@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Approve roster{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Approve roster (Procam Rep)</h1>
+
+<form method="get" class="pc-card pc-form-row" style="align-items:end;">
+  <div><label>Date</label><input type="date" name="date" value="{{ selected_date }}"></div>
+  <div><label>Project</label>
+    <select name="project">
+      <option value="0">— select —</option>
+      {% for p in projects %}<option value="{{ p.id }}" {% if project_id==p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="pc-btn pc-btn-primary">Load</button>
+</form>
+
+{% if project %}
+<form method="post" class="pc-card">
+  <h3>{{ project.name }} · {{ selected_date }}</h3>
+  <table class="pc-table">
+    <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('[name=att_id]').forEach(x=>x.checked=this.checked)"></th>
+                <th>Worker</th><th>Agency</th><th>Status</th><th>Hours</th><th>Decision</th><th>Remark</th></tr></thead>
+    <tbody>
+    {% for a in rows %}
+      {% set c = a.approval('Client') %}
+      <tr>
+        <td><input type="checkbox" name="att_id" value="{{ a.id }}" {% if not c or c.status=='Pending' %}checked{% endif %}></td>
+        <td><b>{{ a.worker.full_name }}</b><br><span style="color:#999;font-size:11px;">{{ a.worker.code }}</span></td>
+        <td>{{ a.worker.agency.name }}</td>
+        <td>{{ a.status }}</td>
+        <td>{{ a.hours }}</td>
+        <td>
+          <select name="decision_{{ a.id }}">
+            <option value="Approved" {% if c and c.status=='Approved' %}selected{% endif %}>Approve</option>
+            <option value="Declined" {% if c and c.status=='Declined' %}selected{% endif %}>Decline</option>
+            <option value="Pending"  {% if not c or c.status=='Pending' %}selected{% endif %}>Pending</option>
+          </select>
+        </td>
+        <td><input name="remark_{{ a.id }}" value="{{ c.remark if c else '' }}" placeholder="optional remark"></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" style="text-align:center;color:#888;">No vendor-confirmed entries for this date yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:14px; display:flex; gap:8px;">
+    <button class="pc-btn pc-btn-success" name="bulk_action" value="Approved">Bulk approve selected</button>
+    <button class="pc-btn pc-btn-danger"  name="bulk_action" value="Declined">Bulk decline selected</button>
+    <button class="pc-btn pc-btn-primary" type="submit">Save individual decisions</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

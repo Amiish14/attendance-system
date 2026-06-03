@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{% if a %}Edit{% else %}New{% endif %} agency{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">{% if a %}Edit agency{% else %}Onboard agency{% endif %}</h1>
+<form method="post" class="pc-card">
+  <h3>Identity</h3>
+  <div class="pc-form-row">
+    <div><label>Code *</label><input name="code" required value="{{ a.code if a else '' }}"></div>
+    <div><label>Name *</label><input name="name" required value="{{ a.name if a else '' }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Contact person</label><input name="contact_person" value="{{ a.contact_person if a else '' }}"></div>
+    <div><label>Email</label><input name="email" value="{{ a.email if a else '' }}"></div>
+    <div><label>Phone</label><input name="phone" value="{{ a.phone if a else '' }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <div style="flex:2;"><label>Address</label><textarea name="address">{{ a.address if a else '' }}</textarea></div>
+  </div>
+
+  <h3>Tax & Bank</h3>
+  <div class="pc-form-row">
+    <div><label>GSTIN</label><input name="gstin" value="{{ a.gstin if a else '' }}"></div>
+    <div><label>PAN</label><input name="pan" value="{{ a.pan if a else '' }}"></div>
+    <div><label>Default GST %</label><input name="default_gst_rate" type="number" step="0.01" value="{{ a.default_gst_rate if a else '18.00' }}"></div>
+    <div><label>Default TDS %</label><input name="default_tds_rate" type="number" step="0.01" value="{{ a.default_tds_rate if a else '2.00' }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Bank name</label><input name="bank_name" value="{{ a.bank_name if a else '' }}"></div>
+    <div><label>Account no.</label><input name="account_no" value="{{ a.account_no if a else '' }}"></div>
+    <div><label>IFSC</label><input name="ifsc" value="{{ a.ifsc if a else '' }}"></div>
+  </div>
+  {% if a %}
+  <div class="pc-form-row">
+    <label style="font-weight:600; color:var(--pc-grey);">
+      <input type="checkbox" name="is_active" {% if a.is_active %}checked{% endif %}> Active
+    </label>
+  </div>
+  {% endif %}
+  <div style="margin-top:14px;">
+    <button class="pc-btn pc-btn-primary" type="submit">Save</button>
+    <a class="pc-btn pc-btn-ghost" href="{{ url_for('admin.agencies') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

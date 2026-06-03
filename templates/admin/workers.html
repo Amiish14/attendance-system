@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Workers{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Workers
+  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('admin.worker_new') }}">+ New worker</a>
+</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr>
+      <th>Code</th><th>Name</th><th>Agency</th><th>Skill</th><th>Category</th>
+      <th>Mobile</th><th>Aadhaar</th><th>Face</th><th>Status</th>
+    </tr></thead>
+    <tbody>
+    {% for w in rows %}
+      <tr>
+        <td><b>{{ w.code }}</b></td>
+        <td>{{ w.full_name }}</td>
+        <td>{{ w.agency.name }}</td>
+        <td>{{ w.skill.name if w.skill else "—" }}</td>
+        <td>
+          {% set cat = w.category %}
+          <span style="font-size:11px; padding:2px 7px; border-radius:9px; font-weight:600;
+                       background:{% if cat == 'Unskilled' %}#f0f0f0;color:#555
+                       {% elif cat == 'Semi-Skilled' %}#e8f0fe;color:#1e4d8c
+                       {% elif cat == 'Skilled' %}#e6f4ea;color:#1a7f37
+                       {% else %}#fdecef;color:#BC1D2F{% endif %};">
+            {{ cat }}
+          </span>
+        </td>
+        <td>{{ w.mobile or "—" }}</td>
+        <td>{{ w.aadhaar_masked or "—" }}</td>
+        <td>{% if w.face_template %}<span class="pc-badge approved">Enrolled</span>{% else %}<span class="pc-badge pending">No</span>{% endif %}</td>
+        <td>{% if w.is_active %}<span class="pc-badge active">Active</span>{% else %}<span class="pc-badge closed">Inactive</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" style="text-align:center;color:#888;">No workers yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

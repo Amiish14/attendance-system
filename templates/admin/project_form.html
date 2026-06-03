@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{% if p %}Edit{% else %}New{% endif %} project{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">{% if p %}Edit project{% else %}Create project{% endif %}</h1>
+<form method="post" class="pc-card">
+  <div class="pc-form-row">
+    <div><label>Code *</label><input name="code" required value="{{ p.code if p else '' }}"></div>
+    <div><label>Name *</label><input name="name" required value="{{ p.name if p else '' }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Client name</label><input name="client_name" value="{{ p.client_name if p else '' }}"></div>
+    <div><label>Location</label><input name="location" value="{{ p.location if p else '' }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Start date</label><input type="date" name="start_date" value="{{ p.start_date if p and p.start_date else '' }}"></div>
+    <div><label>End date</label><input type="date" name="end_date" value="{{ p.end_date if p and p.end_date else '' }}"></div>
+    <div><label>Procam Rep</label>
+      <select name="procam_rep_id">
+        <option value="">— select —</option>
+        {% for u in procam_reps %}
+          <option value="{{ u.id }}" {% if p and p.procam_rep_id == u.id %}selected{% endif %}>{{ u.display_name or u.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% if p %}
+  <div class="pc-form-row">
+    <label><input type="checkbox" name="is_active" {% if p.is_active %}checked{% endif %}> Active</label>
+  </div>
+  {% endif %}
+  <button class="pc-btn pc-btn-primary" type="submit">Save</button>
+  <a class="pc-btn pc-btn-ghost" href="{{ url_for('admin.projects') }}">Cancel</a>
+</form>
+{% endblock %}

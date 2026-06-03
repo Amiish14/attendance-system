@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Rate Cards{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Rate Cards
+  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('admin.rate_new') }}">+ New rate</a>
+</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr>
+      <th>Agency</th><th>Project</th><th>Skill</th><th>Category</th>
+      <th>Daily</th><th>OT/hr</th>
+      <th>From</th><th>To</th>
+    </tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.agency.name }}</td>
+        <td>{{ r.project.name }}</td>
+        <td>{{ r.skill.name }}</td>
+        <td>
+          {% set cat = r.skill.category if r.skill else 'Unskilled' %}
+          <span style="font-size:11px; padding:2px 7px; border-radius:9px; font-weight:600;
+                       background:{% if cat == 'Unskilled' %}#f0f0f0;color:#555
+                       {% elif cat == 'Semi-Skilled' %}#e8f0fe;color:#1e4d8c
+                       {% elif cat == 'Skilled' %}#e6f4ea;color:#1a7f37
+                       {% else %}#fdecef;color:#BC1D2F{% endif %};">{{ cat }}</span>
+        </td>
+        <td>{{ r.daily_rate|incomma }}</td>
+        <td>{{ r.ot_hourly_rate|incomma }}</td>
+        <td>{{ r.effective_from }}</td>
+        <td>{{ r.effective_to or "—" }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" style="text-align:center;color:#888;">No rate cards yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

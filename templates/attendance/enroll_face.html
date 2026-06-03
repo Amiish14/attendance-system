@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Enrol face — {{ worker.full_name }}{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Enrol face — {{ worker.full_name }} <span class="pill">{{ worker.code }}</span></h1>
+
+<div class="pc-card" style="background:#fff8e6; border-left:4px solid #d39e00; margin-bottom:14px;">
+  <p style="margin:0; font-size:13.5px; color:#555;">
+    We'll capture <strong>{{ poses|length }} different angles</strong> of your face. This is what
+    makes the system actually accurate — a single bad photo can't fool it, and a real worker
+    won't be falsely rejected. Follow the prompts on the right; each pose gets a green tick when it's
+    captured.
+  </p>
+</div>
+
+<div class="pc-card">
+  <div class="face-stage" style="display:grid; grid-template-columns: 360px 1fr; gap:24px;">
+    <div>
+      <div class="face-cam">
+        <video id="pc-cam" autoplay playsinline muted style="width:100%; border-radius:6px; background:#000;"></video>
+        <canvas id="pc-snap" style="display:none;"></canvas>
+      </div>
+      <div class="face-status" id="pc-face-status" style="margin-top:10px; padding:8px 10px; background:#f5f5f5; border-radius:4px; font-size:12.5px; color:#555;">starting camera…</div>
+    </div>
+
+    <form method="post" id="enrol-form">
+      <input type="hidden" name="descriptor" id="pc-poses-payload">
+
+      <h3 style="margin:0 0 10px; font-size:16px;">Step-by-step capture</h3>
+      <div id="pc-pose-instruction" style="font-size:15px; font-weight:600; color:#BC1D2F; margin-bottom:12px; min-height:22px;">
+        Wait for camera + models to load…
+      </div>
+
+      <ul id="pc-pose-list" style="list-style:none; padding:0; margin:0 0 16px;">
+        {% for pose in poses %}
+        <li data-pose="{{ pose }}" style="display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #f0f0f0; font-size:13.5px;">
+          <span class="pose-tick" style="width:22px; height:22px; border:2px solid #ccc; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#aaa;">{{ loop.index }}</span>
+          <span class="pose-name" style="flex:1;">Look <strong>{{ pose }}</strong></span>
+          <span class="pose-state" style="font-size:11px; color:#888;">pending</span>
+        </li>
+        {% endfor %}
+        {% for pose in glasses_poses %}
+        <li data-pose="{{ pose }}" class="glasses-pose" style="display:none; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #f0f0f0; font-size:13.5px; background:#fffaf2;">
+          <span class="pose-tick" style="width:22px; height:22px; border:2px solid #d39e00; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; color:#d39e00;">{{ loop.index + 5 }}</span>
+          <span class="pose-name" style="flex:1;">{% if 'On' in pose %}Look Centre <strong>with glasses ON</strong>{% else %}Take glasses OFF and look Centre{% endif %}</span>
+          <span class="pose-state" style="font-size:11px; color:#888;">optional</span>
+        </li>
+        {% endfor %}
+      </ul>
+
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#555; margin-bottom:14px; padding:8px 10px; background:#fff8e6; border-left:3px solid #d39e00; border-radius:4px;">
+        <input type="checkbox" id="wears-glasses" onchange="toggleGlasses()">
+        <span><strong>I sometimes wear glasses.</strong> Adds 2 extra captures (with &amp; without) so the kiosk recognises me either way.</span>
+      </label>
+
+      <div style="display:flex; gap:8px;">
+        <button class="pc-btn pc-btn-primary" type="button" id="pc-capture-btn"
+                onclick="PCEnrol.captureNext()" disabled>
+          Capture this pose
+        </button>
+        <button class="pc-btn pc-btn-ghost" type="button" onclick="PCEnrol.reset()">Start over</button>
+        <button class="pc-btn pc-btn-success" type="submit" id="pc-save-btn" disabled>Save enrolment</button>
+      </div>
+
+      <p style="font-size:11.5px; color:#888; margin-top:12px;">
+        Tip: keep your face filling the frame, eyes at camera level, and only move slightly between
+        poses. The system rejects blurry or distant captures automatically.
+      </p>
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/face.js') }}"></script>
+<script>
+(function () {
+  let POSES = {{ poses | tojson }};
+  const GLASSES_POSES = {{ glasses_poses | tojson }};
+  let idx = 0;
+  const captured = {};   // pose name -> 128-D vector
+
+  window.toggleGlasses = function () {
+    const on = document.getElementById('wears-glasses').checked;
+    document.querySelectorAll('li.glasses-pose').forEach(li => {
+      li.style.display = on ? 'flex' : 'none';
+    });
+    // If user toggled mid-enrolment, rebuild POSES list
+    const baseLength = POSES.length - (on ? 0 : (POSES.includes(GLASSES_POSES[0]) ? GLASSES_POSES.length : 0));
+    const has = POSES.includes(GLASSES_POSES[0]);
+    if (on && !has) {
+      POSES = POSES.concat(GLASSES_POSES);
+    } else if (!on && has) {
+      POSES = POSES.filter(p => !GLASSES_POSES.includes(p));
+      // Drop any captures of glasses poses that already happened
+      for (const p of GLASSES_POSES) delete captured[p];
+    }
+    showCurrent();
+  };
+
+  function listEl() { return document.getElementById('pc-pose-list'); }
+  function instructionEl() { return document.getElementById('pc-pose-instruction'); }
+  function captureBtn() { return document.getElementById('pc-capture-btn'); }
+  function saveBtn() { return document.getElementById('pc-save-btn'); }
+  function payloadEl() { return document.getElementById('pc-poses-payload'); }
+
+  function showCurrent() {
+    if (idx >= POSES.length) {
+      instructionEl().innerHTML = '✓ All ' + POSES.length + ' poses captured. Click <strong>Save enrolment</strong>.';
+      instructionEl().style.color = '#1a7f37';
+      captureBtn().disabled = true;
+      saveBtn().disabled = false;
+      payloadEl().value = JSON.stringify(captured);
+      return;
+    }
+    const pose = POSES[idx];
+    instructionEl().textContent = 'Look ' + pose + ' → click Capture this pose';
+  }
+
+  function markRow(pose, state) {
+    const row = listEl().querySelector('[data-pose="' + pose + '"]');
+    if (!row) return;
+    const tick = row.querySelector('.pose-tick');
+    const stateEl = row.querySelector('.pose-state');
+    if (state === 'done') {
+      tick.style.background = '#1a7f37';
+      tick.style.borderColor = '#1a7f37';
+      tick.style.color = '#fff';
+      tick.textContent = '✓';
+      stateEl.textContent = 'captured';
+      stateEl.style.color = '#1a7f37';
+      stateEl.style.fontWeight = '700';
+    } else if (state === 'current') {
+      tick.style.borderColor = '#BC1D2F';
+      tick.style.color = '#BC1D2F';
+      stateEl.textContent = 'do this now';
+      stateEl.style.color = '#BC1D2F';
+      stateEl.style.fontWeight = '700';
+    } else {
+      tick.style.background = '';
+      tick.style.borderColor = '#ccc';
+      tick.style.color = '#aaa';
+      stateEl.textContent = 'pending';
+      stateEl.style.color = '#888';
+      stateEl.style.fontWeight = '';
+    }
+  }
+
+  async function captureNext() {
+    if (idx >= POSES.length) return;
+    const pose = POSES[idx];
+    // Mark "capturing…" on the row so the user sees feedback even if face.js fails
+    const row = listEl().querySelector('[data-pose="' + pose + '"]');
+    if (row) row.querySelector('.pose-state').textContent = 'capturing…';
+
+    // Pass the expected pose so face.js can REJECT if the user isn't actually
+    // turned in that direction — this is the accuracy fix the user asked for.
+    const desc = await PCFace.capture(pose);
+    if (!desc || desc.length !== 128) {
+      // PCFace already showed the reason in #pc-face-status; copy it onto the pose row
+      const reason = document.getElementById('pc-face-status').textContent.replace(/^❌\s*/, '');
+      if (row) {
+        const stateEl = row.querySelector('.pose-state');
+        stateEl.textContent = reason.slice(0, 90);
+        stateEl.style.color = '#b00020';
+        stateEl.style.fontWeight = '700';
+      }
+      // Also flash the instruction line so it can't be missed
+      instructionEl().textContent = '❌ ' + reason;
+      instructionEl().style.color = '#b00020';
+      return;
+    }
+    captured[pose] = desc;
+    markRow(pose, 'done');
+    idx += 1;
+    if (idx < POSES.length) markRow(POSES[idx], 'current');
+    showCurrent();
+    instructionEl().style.color = '#BC1D2F';
+  }
+
+  function reset() {
+    idx = 0;
+    for (const p of POSES) markRow(p, 'pending');
+    Object.keys(captured).forEach(k => delete captured[k]);
+    payloadEl().value = '';
+    saveBtn().disabled = true;
+    showCurrent();
+  }
+
+  window.PCEnrol = { captureNext, reset };
+
+  // Poll until face-api models are loaded (Capture button gets enabled by
+  // face.js) — at that point light up the first pose row. Direct polling is
+  // more reliable than MutationObserver here because face.js toggles the
+  // disabled attribute via querySelector matches that can miss tree updates.
+  let kicked = false;
+  function kick() {
+    if (kicked) return;
+    const btn = captureBtn();
+    if (btn && !btn.disabled) {
+      kicked = true;
+      markRow(POSES[0], 'current');
+      showCurrent();
+      return;
+    }
+    setTimeout(kick, 250);
+  }
+  kick();
+})();
+</script>
+{% endblock %}

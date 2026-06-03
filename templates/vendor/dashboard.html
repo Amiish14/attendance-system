@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Vendor · Dashboard{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Vendor Dashboard <span class="pill">Agency rep</span></h1>
+<div>
+  <div class="pc-stat"><span class="n">{{ workers_count }}</span><span class="l">Workers</span></div>
+  <div class="pc-stat"><span class="n">{{ today_att }}</span><span class="l">Today's attendance</span></div>
+</div>
+<div class="pc-card">
+  <h3>Daily flow</h3>
+  <ol style="margin-left:18px; color:var(--pc-grey); font-size:13px;">
+    <li>Workers face-punch at the gate.</li>
+    <li>You confirm the roster on <a href="{{ url_for('vendor.roster') }}">Daily Roster</a> (edit hours, mark absent / half day).</li>
+    <li>Procam Rep then approves/declines on their screen.</li>
+    <li>Only dual-approved attendance is billable.</li>
+  </ol>
+</div>
+<div class="pc-card">
+  <div class="pc-tiles">
+    <a class="pc-tile" href="{{ url_for('vendor.roster') }}">
+      <div class="pc-tile-icon">R</div>
+      <div class="pc-tile-title">Daily Roster</div>
+      <div class="pc-tile-desc">Confirm today's attendance for your project.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('vendor.workers') }}">
+      <div class="pc-tile-icon">W</div>
+      <div class="pc-tile-title">Your workers</div>
+      <div class="pc-tile-desc">View and add workers under your agency.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('attendance.regularization_new') }}">
+      <div class="pc-tile-icon">!</div>
+      <div class="pc-tile-title">Raise regularization</div>
+      <div class="pc-tile-desc">For missed punches on a past date.</div>
+    </a>
+  </div>
+</div>
+{% endblock %}

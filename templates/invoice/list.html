@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Invoices
+  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('invoice.generate') }}">+ Generate</a>
+</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr>
+      <th>Invoice No.</th><th>Agency</th><th>Project</th>
+      <th>Period</th><th>Subtotal</th><th>GST</th><th>TDS</th><th>Net</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for i in rows %}
+      <tr>
+        <td><b>{{ i.invoice_no }}</b></td>
+        <td>{{ i.agency.name }}</td>
+        <td>{{ i.project.name }}</td>
+        <td>{{ i.period_start }} → {{ i.period_end }}</td>
+        <td>{{ i.subtotal|incomma }}</td>
+        <td>+{{ i.gst_amount|incomma }} ({{ i.gst_rate }}%)</td>
+        <td>-{{ i.tds_amount|incomma }} ({{ i.tds_rate }}%)</td>
+        <td><b>{{ i.net_payable|incomma }}</b></td>
+        <td><span class="pc-badge {{ i.status|lower }}">{{ i.status }}</span></td>
+        <td><a href="{{ url_for('invoice.print_invoice', iid=i.id) }}">Open</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="10" style="text-align:center;color:#888;">No invoices yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

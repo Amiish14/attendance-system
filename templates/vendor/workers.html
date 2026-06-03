@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Workers{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Your workers
+  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('vendor.worker_new') }}">+ Add worker</a>
+</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr><th>Code</th><th>Name</th><th>Skill</th><th>Mobile</th><th>Face</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for w in rows %}
+      <tr>
+        <td><b>{{ w.code }}</b></td>
+        <td>{{ w.full_name }}</td>
+        <td>{{ w.skill.name if w.skill else "—" }}</td>
+        <td>{{ w.mobile or "—" }}</td>
+        <td>{% if w.face_template %}<span class="pc-badge approved">Enrolled</span>{% else %}<span class="pc-badge pending">Pending</span>{% endif %}</td>
+        <td>{% if w.is_active %}<span class="pc-badge active">Active</span>{% else %}<span class="pc-badge closed">Off</span>{% endif %}</td>
+        <td><a href="{{ url_for('attendance.enroll_face', worker_id=w.id) }}">Enrol face</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" style="text-align:center;color:#888;">No workers yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

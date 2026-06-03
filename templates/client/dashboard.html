@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Procam Rep · Dashboard{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Procam Rep <span class="pill">site approver</span></h1>
+<div>
+  <div class="pc-stat"><span class="n">{{ pending }}</span><span class="l">Pending approvals</span></div>
+  <div class="pc-stat"><span class="n">{{ today_att }}</span><span class="l">Today's attendance</span></div>
+</div>
+<div class="pc-card">
+  <div class="pc-tiles">
+    <a class="pc-tile" href="{{ url_for('client.roster') }}">
+      <div class="pc-tile-icon">A</div>
+      <div class="pc-tile-title">Approve roster</div>
+      <div class="pc-tile-desc">Review the vendor-confirmed list and approve.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('attendance.regularization_queue') }}">
+      <div class="pc-tile-icon">R</div>
+      <div class="pc-tile-title">Regularization queue</div>
+      <div class="pc-tile-desc">Decide on missed-day requests.</div>
+    </a>
+  </div>
+</div>
+{% endblock %}

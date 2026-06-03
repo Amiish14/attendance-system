@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Regularization queue{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Regularization queue</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr><th>Worker</th><th>Project</th><th>Date</th><th>Status</th><th>Reason</th><th>Requested by</th><th>Decide</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><b>{{ r.worker.full_name }}</b><br><span style="color:#999;font-size:11px;">{{ r.worker.code }}</span></td>
+        <td>{{ r.project.name }}</td>
+        <td>{{ r.work_date }}</td>
+        <td><span class="pc-badge info">{{ r.requested_status }}</span></td>
+        <td style="max-width:280px;">{{ r.reason }}</td>
+        <td>{{ r.requested_by.username if r.requested_by else "—" }}</td>
+        <td>
+          <form method="post" action="{{ url_for('attendance.regularization_decide', rid=r.id) }}" style="display:flex; gap:6px;">
+            <input name="remark" placeholder="remark" style="width:140px;">
+            <button class="pc-btn pc-btn-success" name="decision" value="Approved">Approve</button>
+            <button class="pc-btn pc-btn-danger"  name="decision" value="Declined">Decline</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" style="text-align:center;color:#888;">Nothing pending.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

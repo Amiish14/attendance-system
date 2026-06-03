@@ -1,0 +1,47 @@
+# ── Python ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# ── Virtual env ─────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── Flask instance — SQLite DB has PII, never commit ─
+instance/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.db.backup-*
+
+# ── Employee data files (PII, never commit) ─────────
+*PRERNA*.xlsx
+*PRERNA*.xls
+*Employee*Detail*.xlsx
+PRERNA*
+
+# ── Face model weights (large binaries) ─────────────
+static/face-weights/
+static/face-weights/*.bin
+static/face-weights/*.json
+
+# ── Captured face snapshots / uploads ───────────────
+static/uploads/
+static/face-captures/
+
+# ── Editor / OS ─────────────────────────────────────
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Secrets / env files ─────────────────────────────
+.env
+*.env
+secrets.json
+JWT_SECRET*

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Daily Roster{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Daily Roster (Vendor confirmation)</h1>
+
+<form method="get" class="pc-card pc-form-row" style="align-items:end;">
+  <div><label>Date</label><input type="date" name="date" value="{{ selected_date }}"></div>
+  <div><label>Project</label>
+    <select name="project">
+      <option value="0">— select —</option>
+      {% for p in projects %}<option value="{{ p.id }}" {% if project_id==p.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="pc-btn pc-btn-primary" type="submit">Load</button>
+</form>
+
+{% if project %}
+<form method="post" class="pc-card">
+  <h3>{{ project.name }} · {{ selected_date }}</h3>
+  <table class="pc-table">
+    <thead><tr><th>Worker</th><th>Skill</th><th>Punch?</th><th>Status</th><th>Hours</th><th>Approval</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set w = r.worker %}{% set a = r.att %}
+      <tr>
+        <td><b>{{ w.full_name }}</b><br><span style="color:#999;font-size:11px;">{{ w.code }}</span></td>
+        <td>{{ w.skill.name if w.skill else "—" }}</td>
+        <td>
+          {% if a and a.source == 'Worker' %}<span class="pc-badge approved">Punched</span>
+          {% elif a %}<span class="pc-badge info">Manual</span>
+          {% else %}<span class="pc-badge pending">No punch</span>{% endif %}
+        </td>
+        <td>
+          <select name="status_{{ w.id }}">
+            <option value="">— skip —</option>
+            <option value="Present"  {% if a and a.status=='Present' %}selected{% endif %}>Present</option>
+            <option value="HalfDay"  {% if a and a.status=='HalfDay' %}selected{% endif %}>Half day</option>
+            <option value="Absent"   {% if a and a.status=='Absent' %}selected{% endif %}>Absent</option>
+            <option value="Holiday"  {% if a and a.status=='Holiday' %}selected{% endif %}>Holiday</option>
+          </select>
+        </td>
+        <td><input type="number" name="hours_{{ w.id }}" step="0.5" min="0" max="16" value="{{ a.hours if a else 8 }}" style="width:80px;"></td>
+        <td>
+          {% if a %}
+            V: {% set v=a.approval('Vendor') %}<span class="pc-badge {{ (v.status if v else 'pending')|lower }}">{{ v.status if v else 'Pending' }}</span>
+            C: {% set c=a.approval('Client') %}<span class="pc-badge {{ (c.status if c else 'pending')|lower }}">{{ c.status if c else 'Pending' }}</span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" style="text-align:center;color:#888;">No workers in this agency yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div style="margin-top:14px;">
+    <button class="pc-btn pc-btn-primary" type="submit">Confirm roster (sends to Procam Rep)</button>
+  </div>
+</form>
+{% else %}
+<div class="pc-card" style="color:#888;">Pick a project to load today's roster.</div>
+{% endif %}
+{% endblock %}

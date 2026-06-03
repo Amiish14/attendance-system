@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Gate Kiosk{% endblock %}
+{% block content %}
+<style>
+  .gate-shell { max-width: 1300px; margin: 0 auto; padding: 18px; }
+  .gate-head { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; }
+  .gate-head h1 { margin: 0; font-size: 24px; color: #222; }
+  .gate-head .pill { background: #BC1D2F; color: #fff; padding: 4px 10px; border-radius: 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+  .gate-head .right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .gate-head select, .gate-head .btn-toggle { padding: 7px 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+  .gate-head .btn-toggle { background: #fff; cursor: pointer; font-weight: 600; }
+  .gate-head .btn-toggle.live { background: #1a7f37; color: #fff; border-color: #1a7f37; }
+  .gate-head .kind-toggle { display: inline-flex; border: 1px solid #ccc; border-radius: 4px; overflow: hidden; }
+  .gate-head .kind-toggle button { padding: 7px 14px; background: #fff; border: 0; cursor: pointer; font-weight: 700; font-size: 12px; }
+  .gate-head .kind-toggle button.active { background: #BC1D2F; color: #fff; }
+
+  .gate-body { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+  .gate-cam-wrap { background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 4/3; position: relative; }
+  .gate-cam-wrap video { width: 100%; height: 100%; object-fit: cover; }
+  .gate-cam-wrap canvas { display: none; }
+  .gate-banner { position: absolute; bottom: 0; left: 0; right: 0; padding: 18px 22px; background: rgba(0,0,0,0.65); color: #fff; font-size: 18px; font-weight: 600; min-height: 60px; display: flex; align-items: center; gap: 14px; backdrop-filter: blur(4px); }
+  .gate-banner .icon { font-size: 28px; }
+  .gate-banner.ok { background: rgba(26, 127, 55, 0.85); }
+  .gate-banner.flag { background: rgba(211, 158, 0, 0.85); color: #1c1c1c; }
+  .gate-banner.err { background: rgba(176, 0, 32, 0.85); }
+
+  .gate-feed { background: #fff; border: 1px solid #e3e3e3; border-radius: 8px; padding: 14px 16px; }
+  .gate-feed h3 { margin: 0 0 12px; font-size: 14px; color: #444; padding-bottom: 8px; border-bottom: 1px solid #f0f0f0; }
+  .gate-feed table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .gate-feed th { padding: 6px 8px; text-align: left; color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; border-bottom: 2px solid #BC1D2F; }
+  .gate-feed td { padding: 7px 8px; border-bottom: 1px solid #f5f5f5; }
+  .gate-status { font-size: 12px; color: #666; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 10px; padding: 28px 32px; max-width: 480px; width: 90%; text-align: center; box-shadow: 0 14px 40px rgba(0,0,0,0.3); }
+  .modal h2 { margin: 0 0 12px; font-size: 28px; color: #1a7f37; }
+  .modal h2.err { color: #b00020; }
+  .modal h2.flag { color: #c08400; }
+  .modal .name { font-size: 22px; font-weight: 700; color: #222; margin: 6px 0 4px; }
+  .modal .meta { font-size: 13px; color: #666; line-height: 1.6; }
+  .modal .pct { font-size: 15px; color: #888; margin-top: 10px; }
+</style>
+
+<div class="gate-shell">
+  <div class="gate-head">
+    <h1>🏭 Gate Kiosk</h1>
+    <span class="pill">Live Face Scan</span>
+    <div class="right">
+      <label style="color:#666;">Project</label>
+      <select id="gate-project">
+        {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+      <div class="kind-toggle">
+        <button type="button" id="kind-in" class="active" onclick="setKind('in')">IN</button>
+        <button type="button" id="kind-out" onclick="setKind('out')">OUT</button>
+      </div>
+      <button type="button" class="btn-toggle" id="live-btn" onclick="toggleLive()">▶ Start</button>
+      <span class="gate-status" id="gate-status">Camera ready · waiting to start</span>
+    </div>
+  </div>
+
+  <div class="gate-body">
+    <div>
+      <div class="gate-cam-wrap">
+        <video id="pc-cam" autoplay muted playsinline></video>
+        <canvas id="pc-snap"></canvas>
+        <div class="gate-banner" id="gate-banner">
+          <span class="icon">📷</span>
+          <span>Step in front of the camera. Face must fill the frame.</span>
+        </div>
+      </div>
+      <input type="hidden" id="pc-descriptor">
+      <div id="pc-face-status" style="margin-top:10px; padding:8px 10px; background:#f5f5f5; border-radius:4px; font-size:12.5px; color:#555;">starting…</div>
+    </div>
+
+    <div class="gate-feed">
+      <h3>Recent punches today</h3>
+      <table>
+        <thead><tr><th>Time</th><th>Worker</th><th>Kind</th></tr></thead>
+        <tbody id="gate-feed-rows">
+          <tr><td colspan="3" style="text-align:center; color:#aaa; padding:18px;">No punches yet today.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="kiosk-modal">
+  <div class="modal" id="kiosk-modal-body">
+    <h2 id="modal-headline">Welcome</h2>
+    <div class="name" id="modal-name">—</div>
+    <div class="meta" id="modal-meta"></div>
+    <div class="pct" id="modal-pct"></div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/face.js') }}"></script>
+<script>
+(function () {
+  let live = false;
+  let kind = "in";
+  let scanTimer = null;
+  const banner = document.getElementById('gate-banner');
+  const statusEl = document.getElementById('gate-status');
+  const liveBtn = document.getElementById('live-btn');
+
+  window.setKind = function (k) {
+    kind = k;
+    document.getElementById('kind-in').classList.toggle('active', k === 'in');
+    document.getElementById('kind-out').classList.toggle('active', k === 'out');
+  };
+
+  function setBanner(text, cls, icon) {
+    banner.className = 'gate-banner ' + (cls || '');
+    banner.innerHTML = '<span class="icon">' + (icon || '📷') + '</span><span>' + text + '</span>';
+  }
+
+  function showModal(headline, name, meta, pct, cls) {
+    const modal = document.getElementById('kiosk-modal');
+    document.getElementById('modal-headline').textContent = headline;
+    document.getElementById('modal-headline').className = cls || '';
+    document.getElementById('modal-name').textContent = name || '';
+    document.getElementById('modal-meta').innerHTML = meta || '';
+    document.getElementById('modal-pct').textContent = pct ? (pct + '% face match') : '';
+    modal.classList.add('show');
+    setTimeout(() => modal.classList.remove('show'), 2500);
+  }
+
+  async function scanOnce() {
+    if (!live) return;
+    const desc = await PCFace.capture();
+    if (!desc || desc.length !== 128) {
+      setBanner('Position face in centre of frame and hold still.', '', '📷');
+      return;
+    }
+    setBanner('Identifying…', '', '🔎');
+    try {
+      const r = await fetch('/kiosk/identify', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          descriptor: desc,
+          kind: kind,
+          project_id: parseInt(document.getElementById('gate-project').value, 10),
+        })
+      });
+      const j = await r.json();
+      if (r.ok && j.ok && !j.suppressed) {
+        const w = j.worker || {};
+        const meta = (w.agency || '') + (w.skill ? (' · ' + w.skill) : '') +
+                     (w.category ? (' · ' + w.category) : '');
+        if (j.flagged_for_review) {
+          showModal((kind === 'in' ? 'Welcome' : 'Goodbye') + ' (flagged)',
+                    w.name, meta + '<br><em>Low confidence — HR will review.</em>',
+                    j.similarity_pct, 'flag');
+          setBanner(w.name + ' · ' + j.similarity_pct + '% (flagged)', 'flag', '⚠');
+        } else {
+          showModal((kind === 'in' ? 'Welcome' : 'Goodbye') + ', ' + w.name + '!',
+                    w.code, meta + '<br>Pending Contractor + Procam Rep approval.',
+                    j.similarity_pct);
+          setBanner(w.name + ' · ' + j.similarity_pct + '% match', 'ok', '✓');
+        }
+        refreshFeed();
+      } else if (j.suppressed) {
+        setBanner('Already punched — please step aside', '', '⏱');
+      } else if (j.reason === 'unknown_face') {
+        showModal('Face not recognised', '', 'Best match only ' + (j.similarity_pct||0) + '% similar.<br>Please re-enrol or see HR.', null, 'err');
+        setBanner('Face not recognised', 'err', '✗');
+      } else {
+        setBanner(j.message || 'Identification failed', 'err', '✗');
+      }
+    } catch (e) {
+      setBanner('Network error — retrying…', 'err', '⚠');
+    }
+  }
+
+  async function refreshFeed() {
+    try {
+      const r = await fetch('/kiosk/recent');
+      const j = await r.json();
+      const tbody = document.getElementById('gate-feed-rows');
+      if (!j.rows || !j.rows.length) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#aaa; padding:18px;">No punches yet today.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = j.rows.map(r => {
+        const isOut = (r.source || '').indexOf(':out:') !== -1;
+        return '<tr><td>' + r.at + '</td><td><strong>' + r.name + '</strong><br><small style="color:#888;">' + r.code + '</small></td><td>' +
+               (isOut ? '<span style="background:#eee; color:#555; padding:2px 7px; border-radius:9px; font-size:11px; font-weight:700;">OUT</span>'
+                      : '<span style="background:#d4edda; color:#155724; padding:2px 7px; border-radius:9px; font-size:11px; font-weight:700;">IN</span>') +
+               '</td></tr>';
+      }).join('');
+    } catch (e) {}
+  }
+
+  window.toggleLive = function () {
+    if (live) {
+      live = false;
+      clearInterval(scanTimer);
+      scanTimer = null;
+      liveBtn.textContent = '▶ Start';
+      liveBtn.classList.remove('live');
+      statusEl.textContent = 'Paused';
+      setBanner('Scanner paused.', '', '⏸');
+    } else {
+      live = true;
+      liveBtn.textContent = '⏸ Pause';
+      liveBtn.classList.add('live');
+      statusEl.textContent = 'Live — scanning every 2 seconds';
+      setBanner('Scanning…', '', '🔎');
+      // Scan every 2s (heavy enough to be responsive, light enough on the network)
+      scanTimer = setInterval(scanOnce, 2000);
+    }
+  };
+
+  // Refresh the recent-punches feed every 10 seconds
+  setInterval(refreshFeed, 10000);
+  refreshFeed();
+})();
+</script>
+{% endblock %}

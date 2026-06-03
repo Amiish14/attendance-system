@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Raise regularization{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Raise regularization</h1>
+<form method="post" class="pc-card" style="max-width:680px;">
+  {% if workers %}
+  <div class="pc-form-row">
+    <div><label>Worker *</label>
+      <select name="worker_id" required>
+        {% for w in workers %}<option value="{{ w.id }}">{{ w.full_name }} ({{ w.code }})</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  {% endif %}
+  <div class="pc-form-row">
+    <div><label>Project *</label>
+      <select name="project_id" required>
+        {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Work date *</label><input type="date" name="work_date" required></div>
+    <div><label>Status *</label>
+      <select name="requested_status">
+        <option value="Present">Present</option>
+        <option value="HalfDay">Half day</option>
+      </select>
+    </div>
+  </div>
+  <div class="pc-form-row">
+    <div style="flex:2;"><label>Reason</label><textarea name="reason" required></textarea></div>
+  </div>
+  <button class="pc-btn pc-btn-primary" type="submit">Submit</button>
+</form>
+{% endblock %}

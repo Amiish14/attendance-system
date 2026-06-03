@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}My attendance{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">My attendance
+  <span class="pill">{{ worker.code if worker else "—" }}</span>
+</h1>
+
+{% if worker %}
+
+<div class="pc-card">
+  <h3>Hello, {{ worker.full_name }}</h3>
+  <div style="color:var(--pc-grey); font-size:13px; line-height:1.6;">
+    {% if today_att %}
+      Today's status: <b>{{ today_att.status }}</b>
+      {% if today_att.punch_in_at %} · IN at <b>{{ today_att.punch_in_at.strftime('%H:%M:%S') }}</b>{% endif %}
+      {% if today_att.punch_out_at %} · OUT at <b>{{ today_att.punch_out_at.strftime('%H:%M:%S') }}</b>{% endif %}
+      {% if today_att.punch_in_at and today_att.punch_out_at %} · {{ today_att.hours }} hrs{% endif %}
+    {% else %}
+      You haven't been punched today.
+    {% endif %}
+  </div>
+</div>
+
+{% if not worker.face_template %}
+<div class="pc-card" style="border-left:4px solid var(--pc-warning); background:#fff8e6;">
+  <strong>Your face hasn't been enrolled yet.</strong>
+  <p style="margin:8px 0; font-size:13px; color:#555;">
+    You need to enrol your face once before the kiosk can recognise you at the gate.
+    This takes about a minute — you'll capture 5 angles plus an optional glasses-on / glasses-off pair.
+  </p>
+  <a class="pc-btn pc-btn-primary" href="{{ url_for('attendance.enroll_face') }}">Enrol my face now</a>
+</div>
+{% else %}
+<div class="pc-card" style="background:#f5fdf5; border-left:4px solid #1a7f37;">
+  <strong>✓ Face enrolled.</strong>
+  <p style="margin:6px 0 0; font-size:13px; color:#555;">
+    {{ worker.face_template.pose_count }} reference angle(s) on file.
+    Re-enrol if your appearance has changed (new glasses, beard etc.).
+    <a href="{{ url_for('attendance.enroll_face') }}">Re-enrol face</a>
+  </p>
+</div>
+{% endif %}
+
+<div class="pc-card" style="background:#fdf2f3; border-left:4px solid var(--pc-red);">
+  <h3 style="margin-top:0;">📍 Punching in / out is at the kiosk</h3>
+  <p style="margin:0; font-size:13.5px; color:#444; line-height:1.65;">
+    For audit and anti-spoofing reasons, attendance is captured only at the
+    <strong>gate kiosk</strong> manned by security. You cannot punch in or punch out
+    from your own login.
+  </p>
+  <ul style="font-size:13px; color:#555; margin:10px 0 0 0; padding-left:20px; line-height:1.7;">
+    <li>Walk up to the camera at the gate.</li>
+    <li>The system will identify you automatically (no login needed at the kiosk).</li>
+    <li>Your punch goes for approval to the contractor and to the Procam supervisor.</li>
+    <li>Once both approve, that day counts toward your billing / payroll.</li>
+  </ul>
+</div>
+
+<div class="pc-card">
+  <h3>My recent attendance</h3>
+  <table class="pc-table">
+    <thead>
+      <tr><th>Date</th><th>IN</th><th>OUT</th><th>Hours</th><th>Status</th><th>Approval</th></tr>
+    </thead>
+    <tbody>
+      {% for a in recent %}
+      <tr>
+        <td>{{ a.work_date.strftime('%a · %d-%b-%Y') }}</td>
+        <td>{{ a.punch_in_at.strftime('%H:%M:%S') if a.punch_in_at else (a.captured_at.strftime('%H:%M:%S') if a.captured_at else '—') }}</td>
+        <td>{{ a.punch_out_at.strftime('%H:%M:%S') if a.punch_out_at else '—' }}</td>
+        <td>{{ a.hours or '—' }}</td>
+        <td>{{ a.status }}</td>
+        <td>
+          {% set v = a.approval('Vendor') %}{% set c = a.approval('Client') %}
+          {% set vs = v.status if v else 'Pending' %}{% set cs = c.status if c else 'Pending' %}
+          {% if vs == 'Approved' and cs == 'Approved' %}
+            <span class="pc-badge approved">✓ Approved</span>
+          {% elif vs == 'Declined' or cs == 'Declined' %}
+            <span class="pc-badge rejected">Declined</span>
+          {% else %}
+            <span class="pc-badge pending">Pending ({{ vs[0] }}{{ cs[0] }})</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center; color:#888;">No attendance yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="pc-card" style="color:#888;">No worker linked to your account. Contact HR.</div>
+{% endif %}
+
+{% endblock %}

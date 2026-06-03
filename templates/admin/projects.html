@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Projects
+  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('admin.project_new') }}">+ New project</a>
+</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr>
+      <th>Code</th><th>Name</th><th>Client</th><th>Location</th>
+      <th>Procam Rep</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td><b>{{ p.code }}</b></td>
+        <td>{{ p.name }}</td>
+        <td>{{ p.client_name or "—" }}</td>
+        <td>{{ p.location or "—" }}</td>
+        <td>{{ p.procam_rep.display_name if p.procam_rep else "—" }}</td>
+        <td>{% if p.is_active %}<span class="pc-badge active">Active</span>{% else %}<span class="pc-badge closed">Closed</span>{% endif %}</td>
+        <td><a href="{{ url_for('admin.project_edit', pid=p.id) }}">Edit</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" style="text-align:center;color:#888;">No projects yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

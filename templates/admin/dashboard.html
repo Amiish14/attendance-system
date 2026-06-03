@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Admin · Dashboard{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Admin Dashboard <span class="pill">Procam HR</span></h1>
+
+<div style="margin-bottom:16px;">
+  <div class="pc-stat"><span class="n">{{ stats.agencies }}</span><span class="l">Agencies</span></div>
+  <div class="pc-stat"><span class="n">{{ stats.projects }}</span><span class="l">Projects</span></div>
+  <div class="pc-stat"><span class="n">{{ stats.workers }}</span><span class="l">Workers</span></div>
+  <div class="pc-stat"><span class="n">{{ stats.invoices }}</span><span class="l">Invoices</span></div>
+  <div class="pc-stat"><span class="n">{{ stats.attendance_today }}</span><span class="l">Today's punches</span></div>
+</div>
+
+<div class="pc-card">
+  <h3>Quick actions</h3>
+  <div class="pc-tiles">
+    <a class="pc-tile" href="{{ url_for('admin.agency_new') }}">
+      <div class="pc-tile-icon">A</div>
+      <div class="pc-tile-title">Onboard agency</div>
+      <div class="pc-tile-desc">Add a manpower vendor with GST, PAN, bank details.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('admin.project_new') }}">
+      <div class="pc-tile-icon">P</div>
+      <div class="pc-tile-title">Create project</div>
+      <div class="pc-tile-desc">Set up a client site & assign a Procam Rep.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('admin.rate_new') }}">
+      <div class="pc-tile-icon">R</div>
+      <div class="pc-tile-title">Rate card</div>
+      <div class="pc-tile-desc">Set per-skill daily rate for an agency × project.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('admin.worker_new') }}">
+      <div class="pc-tile-icon">W</div>
+      <div class="pc-tile-title">Onboard worker</div>
+      <div class="pc-tile-desc">Add a worker, KYC, optional login for face punch.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('admin.attendance_approvals') }}">
+      <div class="pc-tile-icon">✓</div>
+      <div class="pc-tile-title">HR Approvals</div>
+      <div class="pc-tile-desc">Approve / decline today's office punches.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('admin.attendance_daily') }}">
+      <div class="pc-tile-icon">📅</div>
+      <div class="pc-tile-title">Daily attendance</div>
+      <div class="pc-tile-desc">View today's roster; download Excel for any date.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('invoice.generate') }}">
+      <div class="pc-tile-icon">$</div>
+      <div class="pc-tile-title">Generate invoice</div>
+      <div class="pc-tile-desc">Period-based billing with GST + TDS.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('payroll.payroll_run') }}">
+      <div class="pc-tile-icon">💰</div>
+      <div class="pc-tile-title">Worker payroll</div>
+      <div class="pc-tile-desc">Per-worker payslips from approved attendance.</div>
+    </a>
+    <a class="pc-tile" href="{{ url_for('admin.users') }}">
+      <div class="pc-tile-icon">U</div>
+      <div class="pc-tile-title">Users & roles</div>
+      <div class="pc-tile-desc">Manage Procam Reps & Vendor Reps.</div>
+    </a>
+  </div>
+</div>
+{% endblock %}

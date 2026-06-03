@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Users
+  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('admin.user_new') }}">+ New user</a>
+</h1>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Agency</th><th>Active</th></tr></thead>
+    <tbody>
+    {% for u in rows %}
+      <tr>
+        <td><b>{{ u.username }}</b></td>
+        <td>{{ u.display_name or "—" }}</td>
+        <td><span class="pc-badge red">{{ u.role }}</span></td>
+        <td>{{ u.agency.name if u.agency else "—" }}</td>
+        <td>{% if u.is_active %}Yes{% else %}No{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

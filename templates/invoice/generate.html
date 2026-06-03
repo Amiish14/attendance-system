@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Generate invoice{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Generate invoice</h1>
+<form method="post" class="pc-card" style="max-width:780px;">
+  <div class="pc-form-row">
+    <div><label>Agency *</label>
+      <select name="agency_id" id="agency_id" required>
+        {% for a in agencies %}
+        <option value="{{ a.id }}" data-gst="{{ a.default_gst_rate }}" data-tds="{{ a.default_tds_rate }}">{{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label>Project *</label>
+      <select name="project_id" required>
+        {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Period start *</label><input type="date" name="period_start" required></div>
+    <div><label>Period end *</label><input type="date" name="period_end" required></div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>GST % (override)</label><input type="number" step="0.01" name="gst_rate" id="gst_rate"></div>
+    <div><label>TDS % (override)</label><input type="number" step="0.01" name="tds_rate" id="tds_rate"></div>
+  </div>
+  <p style="color:var(--pc-grey); font-size:12px;">
+    Leave GST/TDS blank to use the agency's defaults. Only dual-approved attendance
+    in the chosen window is included.
+  </p>
+  <button class="pc-btn pc-btn-primary" type="submit">Generate</button>
+</form>
+<script>
+  const sel = document.getElementById('agency_id');
+  function fill() {
+    const o = sel.selectedOptions[0];
+    if (!o) return;
+    document.getElementById('gst_rate').placeholder = 'default ' + o.dataset.gst;
+    document.getElementById('tds_rate').placeholder = 'default ' + o.dataset.tds;
+  }
+  sel.addEventListener('change', fill); fill();
+</script>
+{% endblock %}

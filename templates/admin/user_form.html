@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}New user{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Create user</h1>
+<form method="post" class="pc-card" style="max-width:680px;">
+  <div class="pc-form-row">
+    <div><label>Username *</label><input name="username" required></div>
+    <div><label>Display name</label><input name="display_name"></div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Email</label><input name="email"></div>
+    <div><label>Role *</label>
+      <select name="role" required>
+        <option value="ProcamRep">Procam Rep</option>
+        <option value="VendorRep">Vendor Rep</option>
+        <option value="Admin">Admin</option>
+      </select>
+    </div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Agency (vendor only)</label>
+      <select name="agency_id">
+        <option value="">—</option>
+        {% for a in agencies %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>Password *</label><input name="password" required></div>
+  </div>
+  <button class="pc-btn pc-btn-primary" type="submit">Save</button>
+  <a class="pc-btn pc-btn-ghost" href="{{ url_for('admin.users') }}">Cancel</a>
+</form>
+{% endblock %}

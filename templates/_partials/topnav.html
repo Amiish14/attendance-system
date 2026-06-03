@@ -1,0 +1,46 @@
+{# Role-aware top navigation #}
+<nav class="pc-topnav">
+  <a href="{{ url_for('index') }}" {% if request.endpoint=='index' %}class="active"{% endif %}>Home</a>
+
+  {% if current_user.role == ROLE_ADMIN %}
+    <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+    <div class="pc-nav-group">
+      <a href="#">Masters</a>
+      <div class="pc-nav-dropdown">
+        <a href="{{ url_for('admin.agencies') }}">Agencies</a>
+        <a href="{{ url_for('admin.projects') }}">Projects</a>
+        <a href="{{ url_for('admin.skills') }}">Skills</a>
+        <a href="{{ url_for('admin.rates') }}">Rate Cards</a>
+        <a href="{{ url_for('admin.workers') }}">Workers</a>
+        <a href="{{ url_for('admin.users') }}">Users</a>
+      </div>
+    </div>
+    <div class="pc-nav-group">
+      <a href="#">Operations</a>
+      <div class="pc-nav-dropdown">
+        <a href="{{ url_for('vendor.roster') }}">Vendor Roster</a>
+        <a href="{{ url_for('client.roster') }}">Client Approval</a>
+        <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Queue</a>
+      </div>
+    </div>
+    <div class="pc-nav-group">
+      <a href="#">Invoices</a>
+      <div class="pc-nav-dropdown">
+        <a href="{{ url_for('invoice.list_invoices') }}">All Invoices</a>
+        <a href="{{ url_for('invoice.generate') }}">Generate New</a>
+      </div>
+    </div>
+  {% elif current_user.role == ROLE_PROCAM_REP %}
+    <a href="{{ url_for('client.dashboard') }}">Dashboard</a>
+    <a href="{{ url_for('client.roster') }}">Roster Approval</a>
+    <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Queue</a>
+  {% elif current_user.role == ROLE_VENDOR_REP %}
+    <a href="{{ url_for('vendor.dashboard') }}">Dashboard</a>
+    <a href="{{ url_for('vendor.roster') }}">Daily Roster</a>
+    <a href="{{ url_for('vendor.workers') }}">Workers</a>
+    <a href="{{ url_for('attendance.regularization_new') }}">Raise Regularization</a>
+  {% elif current_user.role == ROLE_WORKER %}
+    <a href="{{ url_for('attendance.worker_home') }}">Punch</a>
+    <a href="{{ url_for('attendance.regularization_new') }}">Regularization</a>
+  {% endif %}
+</nav>

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Daily attendance{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Daily attendance
+  <span class="pill">{{ the_date.strftime('%a, %d-%b-%Y') }}</span>
+</h1>
+
+<form method="get" class="pc-card" style="display:flex; gap:12px; align-items:end;">
+  <div style="flex:1;">
+    <label>Pick date</label>
+    <input type="date" name="date" value="{{ the_date.isoformat() }}"
+           onchange="this.form.submit()">
+  </div>
+  <a class="pc-btn pc-btn-primary"
+     href="{{ url_for('admin.attendance_daily_xlsx', date=the_date.isoformat()) }}">
+    📥 Download Excel
+  </a>
+</form>
+
+<div class="pc-card">
+  <h3>Rows: {{ rows|length }}</h3>
+  <table class="pc-table">
+    <thead>
+      <tr>
+        <th>Code</th><th>Worker</th><th>Department</th><th>Designation</th>
+        <th>IN</th><th>OUT</th><th>Hours</th><th>Vendor</th><th>Procam</th><th>Overall</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in rows %}
+      {% set w = a.worker %}
+      {% set v = a.approval('Vendor') %}{% set c = a.approval('Client') %}
+      {% set vs = v.status if v else 'Pending' %}{% set cs = c.status if c else 'Pending' %}
+      {% set overall = 'Approved' if (vs == 'Approved' and cs == 'Approved')
+                       else ('Declined' if (vs == 'Declined' or cs == 'Declined') else 'Pending') %}
+      <tr>
+        <td><b>{{ w.code }}</b></td>
+        <td>{{ w.full_name }}</td>
+        <td>{{ w.agency.name if w.agency else '—' }}</td>
+        <td>{{ w.skill.name if w.skill else '—' }}</td>
+        <td>{{ a.punch_in_at.strftime('%H:%M:%S') if a.punch_in_at else (a.captured_at.strftime('%H:%M:%S') if a.captured_at else '—') }}</td>
+        <td>{{ a.punch_out_at.strftime('%H:%M:%S') if a.punch_out_at else '—' }}</td>
+        <td>{{ a.hours or '—' }}</td>
+        <td><span class="pc-badge {{ 'approved' if vs == 'Approved' else ('rejected' if vs == 'Declined' else 'pending') }}">{{ vs }}</span></td>
+        <td><span class="pc-badge {{ 'approved' if cs == 'Approved' else ('rejected' if cs == 'Declined' else 'pending') }}">{{ cs }}</span></td>
+        <td><span class="pc-badge {{ 'approved' if overall == 'Approved' else ('rejected' if overall == 'Declined' else 'pending') }}">{{ overall }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" style="text-align:center; color:#888;">No attendance for this date.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

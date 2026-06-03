@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  {% if current_user.is_authenticated %}
+    <header class="pc-banner">
+      <a href="{{ url_for('index') }}" class="pc-logo">
+        <img src="{{ url_for('static', filename='img/procam_logo.jpg') }}" alt="Procam">
+        <span>
+          <div class="pc-logo-name">{{ APP_NAME }}</div>
+          <div class="pc-logo-tag">{{ APP_TAGLINE }}</div>
+        </span>
+      </a>
+      <div class="pc-banner-spacer"></div>
+      <div class="pc-userchip">
+        <span>{{ current_user.display_name or current_user.username }} · <b>{{ current_user.role }}</b></span>
+        <a href="{{ url_for('auth.change_password') }}">Password</a>
+        <a href="{{ url_for('auth.logout') }}">Logout</a>
+      </div>
+    </header>
+    {% include "_partials/topnav.html" %}
+  {% endif %}
+
+  <main class="pc-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="pc-flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% if current_user.is_authenticated %}
+    <footer class="pc-footer">
+      <span>&copy; Procam Logistics · {{ APP_NAME }}</span>
+      <span class="pc-banner-spacer" style="flex:1"></span>
+      <span>v1.0</span>
+    </footer>
+  {% endif %}
+  {% block body_extra %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Worker Payslip — {{ worker.full_name }}</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  body { font-family: Arial, sans-serif; color:#000; font-size:11.5px; margin:0; }
+  table { border-collapse: collapse; width: 100%; }
+  .head { display: flex; align-items: center; gap: 16px; padding-bottom: 8px; border-bottom: 3px solid #BC1D2F; }
+  .head img { height: 56px; }
+  .head h1 { margin:0; font-size: 16px; color: #BC1D2F; font-weight: 800; }
+  .head .sub { font-size: 11px; color: #555; }
+  .title { text-align:center; font-size: 14px; font-weight: 700; margin: 12px 0 4px; text-decoration: underline; }
+  .meta-tbl { border:1px solid #000; margin-top: 8px; }
+  .meta-tbl td { border:1px solid #000; padding:5px 8px; font-size: 11.5px; }
+  .meta-tbl .lbl { width:18%; }
+  .meta-tbl .val { width:32%; font-weight: 700; }
+  .pay-tbl { border:1px solid #000; margin-top: 10px; }
+  .pay-tbl th, .pay-tbl td { border:1px solid #000; padding:5px 8px; font-size: 11.5px; }
+  .pay-tbl th { background:#f0f0f0; text-align:center; }
+  .pay-tbl td.right { text-align: right; font-variant-numeric: tabular-nums; }
+  .summary-tbl { border:1px solid #000; margin-top: 10px; }
+  .summary-tbl td { border:1px solid #000; padding: 6px 10px; font-size: 11.5px; }
+  .summary-tbl td.right { text-align: right; font-weight: 700; }
+  .net-box { background: #fdf2f3; border-left: 4px solid #BC1D2F; padding: 10px 14px; margin-top: 10px; display:flex; justify-content: space-between; font-weight: 700; font-size: 14px; }
+  .footer { margin-top: 14px; font-size: 10.5px; color: #444; line-height: 1.55; }
+  .print-btn { position: fixed; top: 10px; right: 14px; background:#BC1D2F; color:#fff; padding: 6px 14px; border:0; border-radius:4px; cursor:pointer; font-weight: 700; }
+  @media print { .print-btn { display:none; } }
+</style>
+</head><body>
+
+<button class="print-btn" onclick="window.print()">🖨 Print / Save as PDF</button>
+
+<div class="head">
+  <img src="{{ url_for('static', filename='img/procam_logo.jpg') }}" alt="Procam">
+  <div style="flex:1;">
+    <h1>PROCAM LOGISTICS PVT LTD</h1>
+    <div class="sub">Manpower Vendor Attendance &amp; Billing</div>
+  </div>
+  <div style="text-align:right; font-size:11px;">
+    <div><strong>Pay Period</strong></div>
+    <div>{{ period_start.strftime('%d-%b-%Y') }} → {{ period_end.strftime('%d-%b-%Y') }}</div>
+  </div>
+</div>
+
+<div class="title">WORKER PAYSLIP (CONTRACT MANPOWER)</div>
+
+<table class="meta-tbl">
+  <tr>
+    <td class="lbl">Worker Name</td>
+    <td class="val">: {{ worker.full_name }}</td>
+    <td class="lbl">Worker Code</td>
+    <td class="val">: {{ worker.code }}</td>
+  </tr>
+  <tr>
+    <td class="lbl">Skill</td>
+    <td class="val">: {{ worker.skill.name if worker.skill else '—' }}</td>
+    <td class="lbl">Category</td>
+    <td class="val">: {{ worker.category }}</td>
+  </tr>
+  <tr>
+    <td class="lbl">Manpower Agency</td>
+    <td class="val">: {{ agency.name }}</td>
+    <td class="lbl">Project</td>
+    <td class="val">: {{ project.name }}</td>
+  </tr>
+  <tr>
+    <td class="lbl">Aadhaar (last 4)</td>
+    <td class="val">: {{ worker.aadhaar_masked or '—' }}</td>
+    <td class="lbl">Bank A/c</td>
+    <td class="val">: {{ worker.account_no or '—' }}{% if worker.ifsc %} · {{ worker.ifsc }}{% endif %}</td>
+  </tr>
+</table>
+
+<table class="pay-tbl">
+  <thead>
+    <tr>
+      <th style="width:50%;">Particulars</th>
+      <th>Days</th><th>Rate ₹/day</th><th>Amount ₹</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Full present days × daily rate</td>
+      <td class="right">{{ line.present_days }}</td>
+      <td class="right">{{ line.daily_rate|incomma }}</td>
+      <td class="right">{{ ((line.present_days * line.daily_rate)|float)|incomma }}</td>
+    </tr>
+    <tr>
+      <td>Half days × half rate</td>
+      <td class="right">{{ line.half_days }}</td>
+      <td class="right">{{ ((line.daily_rate|float * 0.5)|incomma) }}</td>
+      <td class="right">{{ ((line.half_days * line.daily_rate|float * 0.5)|incomma) }}</td>
+    </tr>
+  </tbody>
+  <tfoot>
+    <tr style="font-weight:700; background:#fafafa;">
+      <td>Total billable days</td>
+      <td class="right">{{ '%.1f'|format(line.billable_days|float) }}</td>
+      <td class="right">—</td>
+      <td class="right">{{ line.gross|incomma }}</td>
+    </tr>
+  </tfoot>
+</table>
+
+<table class="summary-tbl">
+  <tr>
+    <td>Gross Earnings (Days × Daily Rate)</td>
+    <td class="right">₹ {{ line.gross|incomma }}</td>
+  </tr>
+  <tr>
+    <td>Statutory Deductions (PF / ESI, handled by Agency)</td>
+    <td class="right">₹ 0.00</td>
+  </tr>
+  <tr>
+    <td>Advances / Recoveries (handled by Agency)</td>
+    <td class="right">₹ 0.00</td>
+  </tr>
+</table>
+
+<div class="net-box">
+  <span>NET PAYABLE TO WORKER (Agency to disburse)</span>
+  <span>₹ {{ line.gross|incomma }}</span>
+</div>
+
+<div style="margin-top: 6px; font-style: italic; font-size: 11px;">
+  In words: <strong>{{ line.gross|inwords }}</strong>
+</div>
+
+<div class="footer">
+  <strong>Audit trail — billable days included in this payslip:</strong><br>
+  {% for d, status in line.dates -%}
+    {{ d.strftime('%d-%b') }} ({{ status }}){{ ', ' if not loop.last else '.' }}
+  {%- else -%}
+    No billable days for this worker in this period.
+  {%- endfor %}
+  <br><br>
+  This payslip is generated by Procam Logistics Pvt Ltd from dual-approved
+  attendance (Contractor + Procam Rep signed off each day). Actual disbursement
+  is made by <strong>{{ agency.name }}</strong>.
+  Statutory PF / ESI / Income tax compliance is the agency's responsibility under
+  the Contract Labour (R&amp;A) Act, 1970.<br>
+  Generated on {{ generated_at.strftime('%d-%b-%Y %H:%M') }} UTC · System-generated, no signature required.
+</div>
+
+</body></html>
