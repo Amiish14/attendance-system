@@ -193,6 +193,54 @@ def _register_setup_routes(app):
             })
         return jsonify(info)
 
+    @app.route("/setup/check-user")
+    def setup_check_user():
+        """Diagnostic — does this username exist? Is it active? What role?
+           Hit /setup/check-user?token=...&username=EMP1552018"""
+        guard = _guard()
+        if guard: return guard
+        from sqlalchemy import func
+        wanted = (request.args.get("username") or "").strip()
+        if not wanted:
+            return jsonify(error="pass ?username=<emp_code>"), 400
+        # Case-insensitive lookup so we can spot capitalisation drift
+        u = (User.query
+             .filter(func.lower(User.username) == wanted.lower())
+             .first())
+        if not u:
+            # Also report total count + any close-match suggestions
+            sample = [r[0] for r in db.session.query(User.username)
+                      .filter(User.username.ilike(f"%{wanted[:4]}%")).limit(5)]
+            return jsonify(found=False, total_users=User.query.count(),
+                           close_matches=sample), 404
+        return jsonify(
+            found=True, username_in_db=u.username,
+            display_name=u.display_name, role=u.role,
+            is_active=u.is_active, must_change_password=u.must_change_password,
+            hash_length=len(u.password_hash or ""),
+            hash_prefix=(u.password_hash or "")[:7],
+            hint=("password is bcrypt-hashed; convention is password = username "
+                  "with original capitalisation"),
+        )
+
+    @app.route("/setup/list-users")
+    def setup_list_users():
+        """First 200 users in the DB — for debugging which roles exist on Render.
+           Hit /setup/list-users?token=..."""
+        guard = _guard()
+        if guard: return guard
+        rows = User.query.order_by(User.username).limit(200).all()
+        from collections import Counter
+        roles = Counter(u.role for u in User.query.all())
+        return jsonify(
+            total=User.query.count(),
+            roles=dict(roles),
+            sample=[{"username": u.username, "role": u.role,
+                     "active": u.is_active,
+                     "must_change_password": u.must_change_password}
+                    for u in rows],
+        )
+
     @app.route("/setup/reset-all-workers")
     def setup_reset_all_workers():
         """Reset every Worker user's password back to their username

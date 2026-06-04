@@ -1,6 +1,7 @@
 """Login, logout, change-password."""
 from flask import Blueprint, render_template, redirect, url_for, request, flash
 from flask_login import login_user, logout_user, login_required, current_user
+from sqlalchemy import func
 
 from models import db, User
 
@@ -15,7 +16,13 @@ def login():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-        u = User.query.filter_by(username=username).first()
+        # Username lookup is case-insensitive (so emp1552018, EMP1552018,
+        # Emp1552018 all match the same row). Password stays case-sensitive
+        # exactly as set — which by convention is the emp_code with original
+        # capitals, e.g. EMP1552018.
+        u = (User.query
+             .filter(func.lower(User.username) == username.lower())
+             .first())
         if not u or not u.check_password(password) or not u.is_active:
             flash("Invalid credentials.", "error")
             return render_template("auth/login.html"), 401
