@@ -79,19 +79,40 @@
 
   window.toggleGlasses = function () {
     const on = document.getElementById('wears-glasses').checked;
+
+    // 1. Show/hide the visual rows in the pose list.
     document.querySelectorAll('li.glasses-pose').forEach(li => {
       li.style.display = on ? 'flex' : 'none';
     });
-    // If user toggled mid-enrolment, rebuild POSES list
-    const baseLength = POSES.length - (on ? 0 : (POSES.includes(GLASSES_POSES[0]) ? GLASSES_POSES.length : 0));
-    const has = POSES.includes(GLASSES_POSES[0]);
-    if (on && !has) {
+
+    const hasGlassesInQueue = POSES.includes(GLASSES_POSES[0]);
+
+    if (on && !hasGlassesInQueue) {
+      // 2a. ADDING glasses poses to the queue.
       POSES = POSES.concat(GLASSES_POSES);
-    } else if (!on && has) {
+      // If user already finished the base 5, idx === 5. We now need to:
+      //   - re-enable the Capture button (showCurrent disabled it)
+      //   - disable the Save button (it'll re-enable after the last glasses pose)
+      //   - mark the next glasses pose as "current" in the list
+      if (idx < POSES.length) {
+        captureBtn().disabled = false;
+        saveBtn().disabled = true;
+        markRow(POSES[idx], 'current');
+      }
+    } else if (!on && hasGlassesInQueue) {
+      // 2b. REMOVING glasses poses from the queue.
       POSES = POSES.filter(p => !GLASSES_POSES.includes(p));
-      // Drop any captures of glasses poses that already happened
-      for (const p of GLASSES_POSES) delete captured[p];
+      // Drop any captures of glasses poses that already happened, AND reset
+      // their visual state so toggling back on shows fresh "pending" rows.
+      for (const p of GLASSES_POSES) {
+        delete captured[p];
+        markRow(p, 'pending');
+      }
+      // If idx was sitting in the glasses range, clamp it. showCurrent will
+      // then treat us as "all done" if the base 5 are complete.
+      if (idx > POSES.length) idx = POSES.length;
     }
+
     showCurrent();
   };
 
@@ -103,6 +124,7 @@
 
   function showCurrent() {
     if (idx >= POSES.length) {
+      // Everything queued is captured — let the user save.
       instructionEl().innerHTML = '✓ All ' + POSES.length + ' poses captured. Click <strong>Save enrolment</strong>.';
       instructionEl().style.color = '#1a7f37';
       captureBtn().disabled = true;
@@ -111,7 +133,23 @@
       return;
     }
     const pose = POSES[idx];
-    instructionEl().textContent = 'Look ' + pose + ' → click Capture this pose';
+    // Show instruction. Use the human-friendly text for glasses poses.
+    let label;
+    if (pose === 'Glasses-On')      label = 'Look Centre WITH glasses ON';
+    else if (pose === 'Glasses-Off') label = 'Take glasses OFF and look Centre';
+    else                             label = 'Look ' + pose;
+    instructionEl().textContent = label + ' → click Capture this pose';
+    instructionEl().style.color = '#BC1D2F';
+    // Save is gated on completing the entire queue.
+    saveBtn().disabled = true;
+    // Capture button: only enabled if the face-api models are ready. We
+    // leave that to face.js, but we DO clear "done"-state disables so the
+    // user can keep going once models are loaded.
+    if (!captureBtn().dataset.modelsLoaded) {
+      // first time — face.js will enable it
+    } else {
+      captureBtn().disabled = false;
+    }
   }
 
   function markRow(pose, state) {

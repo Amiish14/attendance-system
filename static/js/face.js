@@ -72,6 +72,9 @@
       btn.disabled = !on;
       btn.style.opacity = on ? "" : "0.55";
       btn.style.cursor = on ? "" : "not-allowed";
+      // Mark the button so PCEnrol.showCurrent() knows it's safe to re-enable
+      // after a glasses-toggle or other UI event without waiting for models.
+      if (on) btn.dataset.modelsLoaded = "1";
     });
   }
 
