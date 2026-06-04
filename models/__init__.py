@@ -222,6 +222,10 @@ class FaceTemplate(db.Model):
     enrolled_at = db.Column(db.DateTime, default=datetime.utcnow)
     # How many distinct pose captures went into this enrolment (1 = legacy).
     pose_count = db.Column(db.Integer, default=1, nullable=False)
+    # Base64-encoded JPEG snapshot of the Centre pose. Stored in the DB so it
+    # survives Render's ephemeral disk. Capped to ~200x200 to keep it small
+    # (each photo ~12-20 KB → entire workforce well under 5 MB).
+    snapshot_b64 = db.Column(db.Text)
 
     worker = db.relationship("Worker", backref=db.backref("face_template", uselist=False))
 

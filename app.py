@@ -481,6 +481,8 @@ def _patch_schema():
         ("workers", "designation",  "VARCHAR(120)"),
         ("workers", "vertical",     "VARCHAR(80)"),
         ("workers", "grade",        "VARCHAR(20)"),
+        # Face audit — snapshot photo of the Centre pose
+        ("face_templates", "snapshot_b64", "TEXT"),
     ]
     for table, column, coldef in expected_columns:
         try:

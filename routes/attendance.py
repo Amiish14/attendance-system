@@ -84,6 +84,16 @@ def enroll_face():
                     if isinstance(vec, list) and len(vec) == 128:
                         poses[f"Pose{i+1}"] = [float(x) for x in vec]
 
+        # Optional snapshot — small JPEG of the Centre frame so HR can verify
+        # who actually enrolled. Comes as a 'snapshot' form field (data URL).
+        snap_b64 = (request.form.get("snapshot") or "").strip()
+        if snap_b64.startswith("data:image"):
+            # Strip the "data:image/jpeg;base64," prefix — store the raw b64.
+            snap_b64 = snap_b64.split(",", 1)[-1]
+        # Hard cap at ~80KB of base64 to keep the DB lean.
+        if len(snap_b64) > 80_000:
+            snap_b64 = ""
+
         if len(poses) == 0:
             flash("Could not capture any face descriptors — try again in good light.", "error")
         elif len(poses) < 3:
@@ -93,12 +103,15 @@ def enroll_face():
             payload = _json.dumps({"poses": poses})
             if not tpl:
                 tpl = FaceTemplate(worker_id=worker.id,
-                                   descriptor_json=payload, pose_count=len(poses))
+                                   descriptor_json=payload, pose_count=len(poses),
+                                   snapshot_b64=snap_b64 or None)
                 db.session.add(tpl)
             else:
                 tpl.descriptor_json = payload
                 tpl.pose_count = len(poses)
                 tpl.enrolled_at = datetime.utcnow()
+                if snap_b64:
+                    tpl.snapshot_b64 = snap_b64
             db.session.commit()
             flash(f"Face enrolled with {len(poses)} pose(s): " +
                   ", ".join(poses.keys()) + ".", "success")

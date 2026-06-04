@@ -24,6 +24,7 @@
 
     <form method="post" id="enrol-form">
       <input type="hidden" name="descriptor" id="pc-poses-payload">
+      <input type="hidden" name="snapshot"  id="pc-snapshot-payload">
 
       <h3 style="margin:0 0 10px; font-size:16px;">Step-by-step capture</h3>
       <div id="pc-pose-instruction" style="font-size:15px; font-weight:600; color:#BC1D2F; margin-bottom:12px; min-height:22px;">
@@ -206,6 +207,22 @@
       return;
     }
     captured[pose] = desc;
+    // Grab a small JPEG of the live video frame on the FIRST successful
+    // Centre capture — stored alongside the descriptor so HR can verify
+    // who actually sat in the chair during enrolment.
+    if (pose === 'Centre' && !document.getElementById('pc-snapshot-payload').value) {
+      try {
+        const v = document.getElementById('pc-cam');
+        const cv = document.createElement('canvas');
+        const target = 240;  // px on the longer side
+        const ratio = v.videoWidth / v.videoHeight || 1;
+        cv.width  = ratio >= 1 ? target : Math.round(target * ratio);
+        cv.height = ratio >= 1 ? Math.round(target / ratio) : target;
+        cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+        const dataUrl = cv.toDataURL('image/jpeg', 0.72);
+        document.getElementById('pc-snapshot-payload').value = dataUrl;
+      } catch (e) { /* snapshot is best-effort; don't block enrolment */ }
+    }
     markRow(pose, 'done');
     idx += 1;
     if (idx < POSES.length) markRow(POSES[idx], 'current');

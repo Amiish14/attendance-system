@@ -635,6 +635,46 @@ def _ensure_skill_inline(name: str) -> Skill:
     return sk
 
 
+# ---------------------------------------------------------------------------
+# Face enrolment audit — who has enrolled, when, and what the photo looks like
+# ---------------------------------------------------------------------------
+@bp.route("/face-enrolments")
+@login_required
+@role_required(ROLE_ADMIN)
+def face_enrolments():
+    """Grid + stats. Shows every worker, whether they've enrolled, when, how
+       many poses, and the snapshot photo captured during their Centre pose."""
+    from models import FaceTemplate
+    workers = Worker.query.filter_by(is_active=True).order_by(Worker.full_name).all()
+    enrolled_ids = {t.worker_id: t for t in FaceTemplate.query.all()}
+    total_workers   = len(workers)
+    enrolled_count  = sum(1 for w in workers if w.id in enrolled_ids)
+    pending_count   = total_workers - enrolled_count
+    has_snapshot    = sum(1 for t in enrolled_ids.values() if t.snapshot_b64)
+    return render_template("admin/face_enrolments.html",
+                           workers=workers, templates=enrolled_ids,
+                           total=total_workers, enrolled=enrolled_count,
+                           pending=pending_count, has_snapshot=has_snapshot)
+
+
+@bp.route("/face-enrolments/reset/<int:worker_id>", methods=["POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def face_reset_one(worker_id: int):
+    """Wipe one worker's face template — they'll be forced to re-enrol on next login."""
+    from models import FaceTemplate
+    tpl = FaceTemplate.query.filter_by(worker_id=worker_id).first()
+    w   = Worker.query.get(worker_id)
+    if tpl:
+        db.session.delete(tpl)
+        db.session.commit()
+        flash(f"Face wiped for {w.full_name if w else worker_id}. "
+              f"They'll be forced to re-enrol on next login.", "success")
+    else:
+        flash("No face template to wipe for that worker.", "warning")
+    return redirect(url_for("admin.face_enrolments"))
+
+
 @bp.route("/import-employees", methods=["GET", "POST"])
 @login_required
 @role_required(ROLE_ADMIN)

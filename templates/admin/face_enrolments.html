@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Face enrolments{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Face enrolment audit</h1>
+
+{# Top-line stats #}
+<div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-bottom:14px;">
+  <div class="pc-card" style="text-align:center;">
+    <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:1px;">Active workers</div>
+    <div style="font-size:28px; font-weight:700; color:#333;">{{ total }}</div>
+  </div>
+  <div class="pc-card" style="text-align:center; background:#eaf6ec;">
+    <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:1px;">Enrolled</div>
+    <div style="font-size:28px; font-weight:700; color:#1a7f37;">{{ enrolled }}</div>
+  </div>
+  <div class="pc-card" style="text-align:center; background:#fff8e6;">
+    <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:1px;">Pending</div>
+    <div style="font-size:28px; font-weight:700; color:#BC1D2F;">{{ pending }}</div>
+  </div>
+  <div class="pc-card" style="text-align:center;">
+    <div style="font-size:11px; color:#888; text-transform:uppercase; letter-spacing:1px;">With photo</div>
+    <div style="font-size:28px; font-weight:700; color:#333;">{{ has_snapshot }}</div>
+  </div>
+</div>
+
+{# Filter tabs — toggle which group to show #}
+<div style="margin-bottom:14px;">
+  <button class="pc-btn pc-btn-ghost" onclick="filterRows('all')">All ({{ total }})</button>
+  <button class="pc-btn pc-btn-ghost" onclick="filterRows('enrolled')">✓ Enrolled ({{ enrolled }})</button>
+  <button class="pc-btn pc-btn-ghost" onclick="filterRows('pending')">⏳ Pending ({{ pending }})</button>
+  <input type="text" id="face-search" placeholder="Search by name or emp code…" oninput="searchRows()"
+         style="margin-left:12px; padding:8px 12px; border:1px solid #ddd; border-radius:4px; width:260px;">
+</div>
+
+<div class="pc-card" style="padding:0; overflow:hidden;">
+  <table class="pc-table" style="margin:0;">
+    <thead><tr>
+      <th style="width:80px;">Photo</th>
+      <th>Code</th>
+      <th>Name</th>
+      <th>Designation</th>
+      <th>Vertical</th>
+      <th>Enrolled</th>
+      <th>Poses</th>
+      <th>Action</th>
+    </tr></thead>
+    <tbody id="face-rows">
+    {% for w in workers %}
+      {% set t = templates.get(w.id) %}
+      <tr class="face-row" data-status="{{ 'enrolled' if t else 'pending' }}"
+          data-q="{{ (w.code ~ ' ' ~ w.full_name)|lower }}">
+        <td>
+          {% if t and t.snapshot_b64 %}
+            <img src="data:image/jpeg;base64,{{ t.snapshot_b64 }}"
+                 alt="{{ w.full_name }}"
+                 style="width:60px; height:60px; border-radius:6px; object-fit:cover; border:2px solid #1a7f37;">
+          {% elif t %}
+            <div style="width:60px; height:60px; border-radius:6px; background:#eaf6ec; color:#1a7f37; display:flex; align-items:center; justify-content:center; font-size:11px; text-align:center; border:2px solid #1a7f37;">
+              No photo<br>(math only)
+            </div>
+          {% else %}
+            <div style="width:60px; height:60px; border-radius:6px; background:#f5f5f5; color:#aaa; display:flex; align-items:center; justify-content:center; font-size:11px; text-align:center; border:2px dashed #ccc;">
+              Pending
+            </div>
+          {% endif %}
+        </td>
+        <td><b>{{ w.code }}</b></td>
+        <td>{{ w.full_name }}</td>
+        <td>{{ w.designation or "—" }}</td>
+        <td>{{ w.vertical or "—" }}</td>
+        <td>
+          {% if t %}
+            <span class="pc-badge approved">{{ t.enrolled_at.strftime("%d %b %Y %H:%M") if t.enrolled_at else "—" }}</span>
+          {% else %}
+            <span class="pc-badge pending">Not enrolled</span>
+          {% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if t %}<b>{{ t.pose_count }}</b>{% else %}—{% endif %}
+        </td>
+        <td>
+          {% if t %}
+            <form method="post" action="{{ url_for('admin.face_reset_one', worker_id=w.id) }}"
+                  onsubmit="return confirm('Wipe face for {{ w.full_name }}? They will re-enrol on next login.');"
+                  style="margin:0;">
+              <button type="submit" class="pc-btn pc-btn-ghost"
+                      style="font-size:12px; padding:4px 10px; color:#BC1D2F; border-color:#BC1D2F;">
+                Reset
+              </button>
+            </form>
+          {% else %}
+            <span style="color:#aaa; font-size:12px;">—</span>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function filterRows(status) {
+  document.querySelectorAll('.face-row').forEach(r => {
+    if (status === 'all') r.style.display = '';
+    else r.style.display = (r.dataset.status === status) ? '' : 'none';
+  });
+}
+function searchRows() {
+  const q = document.getElementById('face-search').value.trim().toLowerCase();
+  document.querySelectorAll('.face-row').forEach(r => {
+    if (!q) r.style.display = '';
+    else r.style.display = r.dataset.q.includes(q) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}
