@@ -30,11 +30,41 @@ from utils import role_required, descriptor_loads, best_face_match
 bp = Blueprint("kiosk", __name__)
 
 
+DEFAULT_PROJECT_CODE = "GEN"
+DEFAULT_PROJECT_NAME = "General Attendance"
+
+
+def _ensure_default_project() -> Project:
+    """Return (creating if needed) the default 'General Attendance' project.
+       This lets the kiosk record punches without forcing HR to pre-create
+       project rows for every site. Useful for office attendance where
+       there is no specific project to bill against."""
+    p = Project.query.filter_by(code=DEFAULT_PROJECT_CODE).first()
+    if p:
+        if not p.is_active:
+            p.is_active = True
+            db.session.commit()
+        return p
+    p = Project(
+        code=DEFAULT_PROJECT_CODE,
+        name=DEFAULT_PROJECT_NAME,
+        client_name="Procam Logistics",
+        location="HO / All sites",
+        start_date=date.today(),
+        is_active=True,
+    )
+    db.session.add(p); db.session.commit()
+    return p
+
+
 @bp.route("/kiosk")
 @login_required
 @role_required(ROLE_GATE_GUARD, ROLE_ADMIN)
 def gate_screen():
     """The kiosk full-screen page. Guard signs in here, then the camera runs."""
+    # Guarantee a default project exists so the kiosk always has somewhere to
+    # write punches. HR can switch to per-site projects later if needed.
+    _ensure_default_project()
     projects = Project.query.filter_by(is_active=True).order_by(Project.name).all()
     return render_template("kiosk/gate.html", projects=projects)
 
@@ -64,13 +94,12 @@ def identify():
     confidence_floor = float(current_app.config.get("KIOSK_CONFIDENCE_FLOOR", 0.55))
     redetect_seconds = int(current_app.config.get("KIOSK_REDETECT_SECONDS", 30))
 
+    # Project is OPTIONAL now. If the kiosk client doesn't pass one, use the
+    # 'General Attendance' default project (auto-created on demand). HR can
+    # later assign specific site projects without breaking the kiosk flow.
     project_id = int(d.get("project_id") or 0)
     if not project_id:
-        p = Project.query.filter_by(is_active=True).first()
-        project_id = p.id if p else 0
-    if not project_id:
-        return jsonify(ok=False, reason="no_project",
-                       message="No active project configured. Ask admin."), 400
+        project_id = _ensure_default_project().id
     kind = (d.get("kind") or "in").lower()
     if kind not in ("in", "out"):
         kind = "in"

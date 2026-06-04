@@ -47,8 +47,10 @@
     <h1>🏭 Gate Kiosk</h1>
     <span class="pill">Live Face Scan</span>
     <div class="right">
-      <label style="color:#666;">Project</label>
-      <select id="gate-project">
+      {# Project picker removed — kiosk uses the default 'General Attendance'
+         project automatically. Keeping a hidden select so the JS code that
+         reads its value still works without changes. #}
+      <select id="gate-project" style="display:none;">
         {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
       </select>
       <div class="kind-toggle">
@@ -142,7 +144,9 @@
         body: JSON.stringify({
           descriptor: desc,
           kind: kind,
-          project_id: parseInt(document.getElementById('gate-project').value, 10),
+          // Project optional now — server picks the default if we send 0.
+          project_id: parseInt(
+            (document.getElementById('gate-project') || {}).value || '0', 10),
         })
       });
       const j = await r.json();
