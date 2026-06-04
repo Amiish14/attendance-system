@@ -20,7 +20,16 @@
       </a>
       <div class="pc-banner-spacer"></div>
       <div class="pc-userchip">
-        <span>{{ current_user.display_name or current_user.username }} · <b>{{ current_user.role }}</b></span>
+        {# Show PRERNA designation (e.g. "Sr. Manager", "Driver") when the
+           user is linked to a Worker record; fall back to the role label for
+           bootstrap/system users (admin, gate1) that don't have one. #}
+        {% set _desig = (current_user.worker.designation
+                         if current_user.worker_id and current_user.worker
+                         else None) %}
+        <span>
+          {{ current_user.display_name or current_user.username }} ·
+          <b>{{ _desig or current_user.role }}</b>
+        </span>
         <a href="{{ url_for('auth.change_password') }}">Password</a>
         <a href="{{ url_for('auth.logout') }}">Logout</a>
       </div>

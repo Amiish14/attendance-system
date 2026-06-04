@@ -6,14 +6,19 @@
 </h1>
 <div class="pc-card">
   <table class="pc-table">
-    <thead><tr><th>Username</th><th>Display name</th><th>Role</th><th>Agency</th><th>Active</th></tr></thead>
+    <thead><tr><th>Username</th><th>Display name</th><th>Designation (PRERNA)</th><th>Vertical</th><th>Grade</th><th>Access level</th><th>Agency</th><th>Active</th></tr></thead>
     <tbody>
     {% for u in rows %}
+      {# Pull PRERNA fields from the linked Worker record when available #}
+      {% set w = u.worker %}
       <tr>
         <td><b>{{ u.username }}</b></td>
         <td>{{ u.display_name or "—" }}</td>
+        <td>{{ (w.designation if w else None) or "—" }}</td>
+        <td>{{ (w.vertical if w else None) or "—" }}</td>
+        <td>{{ (w.grade if w else None) or "—" }}</td>
         <td><span class="pc-badge red">{{ u.role }}</span></td>
-        <td>{{ u.agency.name if u.agency else "—" }}</td>
+        <td>{{ u.agency.name if u.agency else (w.agency.name if w and w.agency else "—") }}</td>
         <td>{% if u.is_active %}Yes{% else %}No{% endif %}</td>
       </tr>
     {% endfor %}
