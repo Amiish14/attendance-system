@@ -223,6 +223,141 @@ def _register_setup_routes(app):
                   "with original capitalisation"),
         )
 
+    @app.route("/setup/import-employees", methods=["GET", "POST"])
+    def setup_import_employees():
+        """Token-guarded PRERNA importer. GET shows an upload form, POST runs
+           the import. Same logic as /admin/import-employees but doesn't require
+           login — for first-time bootstrap when admin can't be reached.
+           Hit /setup/import-employees?token=<SETUP_TOKEN>"""
+        guard = _guard()
+        if guard: return guard
+
+        if request.method == "GET":
+            return ("<!doctype html><html><body style='font-family:sans-serif; "
+                    "max-width:600px; margin:60px auto; padding:20px;'>"
+                    "<h2>Bootstrap PRERNA employees</h2>"
+                    "<p>Upload PRERNA_Full_Backup_*.xlsx — imports/updates "
+                    "every employee with the correct role.</p>"
+                    f"<form method='post' enctype='multipart/form-data' "
+                    f"action='/setup/import-employees?token={request.args.get('token','')}'>"
+                    "<input type='file' name='file' accept='.xlsx,.xlsm' required "
+                    "style='display:block; margin:20px 0; padding:10px; "
+                    "border:2px dashed #BC1D2F; border-radius:6px; width:100%;'>"
+                    "<button type='submit' style='padding:10px 20px; "
+                    "background:#BC1D2F; color:#fff; border:none; border-radius:4px; "
+                    "font-size:14px; cursor:pointer;'>Import everyone</button></form>"
+                    "</body></html>")
+
+        # POST — same logic as /admin/import-employees
+        from collections import Counter
+        from models import (Agency, Skill, Worker, ROLE_ADMIN, ROLE_PROCAM_REP,
+                            ROLE_WORKER, APPROVER_NONE, CAT_SKILLED)
+        import tempfile
+        from datetime import date as _date
+        from decimal import Decimal as _Dec
+
+        ROLE_MAP = {"SUPER_ADMIN": ROLE_ADMIN, "HR_ADMIN": ROLE_ADMIN,
+                    "MANAGER": ROLE_PROCAM_REP, "EMPLOYEE": ROLE_WORKER}
+
+        f = request.files.get("file")
+        if not f or not f.filename.lower().endswith((".xlsx", ".xlsm")):
+            return jsonify(error="please POST a .xlsx file as 'file'"), 400
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tf:
+            f.save(tf.name); tmp_path = tf.name
+
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(filename=tmp_path, read_only=True, data_only=True)
+            ws = None
+            for name in wb.sheetnames:
+                if "employee" in name.lower() or "master" in name.lower():
+                    ws = wb[name]; break
+            if ws is None:
+                ws = wb.active
+
+            rows_iter = ws.iter_rows(values_only=True)
+            headers = [str(h).strip() if h else "" for h in next(rows_iter)]
+            ix = {h.lower(): i for i, h in enumerate(headers)}
+            def col(row, key):
+                i = ix.get(key.lower())
+                return row[i] if i is not None and i < len(row) else None
+
+            # Ensure PROCAM agency exists with mode=none
+            ag = Agency.query.filter_by(code="PROCAM").first()
+            if not ag:
+                ag = Agency(code="PROCAM", name="Procam Logistics (In-house)",
+                            contact_person="HR Admin", email="hr@procamlogistics.com",
+                            address="Procam HO", default_gst_rate=_Dec("0.00"),
+                            default_tds_rate=_Dec("0.00"),
+                            onboarded_on=_date.today(), is_active=True,
+                            approver_mode=APPROVER_NONE)
+                db.session.add(ag); db.session.flush()
+            elif ag.approver_mode != APPROVER_NONE:
+                ag.approver_mode = APPROVER_NONE
+
+            cw = uw = cu = uu = 0
+            for row in rows_iter:
+                if not row or all(v in (None, "") for v in row): continue
+                emp_code = col(row, "Emp Code"); full_name = col(row, "Full Name")
+                if not emp_code or not full_name: continue
+                emp_code = str(emp_code).strip(); full_name = str(full_name).strip()
+
+                vertical = (str(col(row, "Vertical") or "").strip())[:80] or None
+                desig    = (str(col(row, "Designation") or "").strip())[:120] or "Employee"
+                grade    = (str(col(row, "Grade") or "").strip())[:20] or None
+                mgr_code = (str(col(row, "Mgr Code") or "").strip())[:32] or None
+                prerna_role = (str(col(row, "Role") or "").strip()) or "EMPLOYEE"
+                app_role = ROLE_MAP.get(prerna_role.strip().upper().replace(" ", "_"),
+                                        ROLE_WORKER)
+
+                sk = Skill.query.filter_by(name=desig).first()
+                if not sk:
+                    sk = Skill(name=desig, category=CAT_SKILLED)
+                    db.session.add(sk); db.session.flush()
+
+                w = Worker.query.filter_by(code=emp_code).first()
+                if not w:
+                    w = Worker(code=emp_code, full_name=full_name,
+                               agency_id=ag.id, skill_id=sk.id, is_active=True,
+                               onboarded_on=_date.today(), manager_code=mgr_code,
+                               designation=desig, vertical=vertical, grade=grade)
+                    db.session.add(w); db.session.flush()
+                    cw += 1
+                else:
+                    w.full_name = full_name; w.agency_id = ag.id; w.skill_id = sk.id
+                    w.is_active = True; w.manager_code = mgr_code
+                    w.designation = desig; w.vertical = vertical; w.grade = grade
+                    uw += 1
+
+                u = User.query.filter_by(username=emp_code).first()
+                if not u:
+                    u = User(username=emp_code, display_name=full_name,
+                             role=app_role, is_active=True,
+                             must_change_password=True, worker_id=w.id)
+                    u.set_password(emp_code)
+                    db.session.add(u); cu += 1
+                else:
+                    u.display_name = full_name; u.worker_id = w.id
+                    u.role = app_role; u.is_active = True
+                    uu += 1
+                if (cw + uw) % 50 == 0: db.session.commit()
+
+            db.session.commit(); wb.close()
+            roles = Counter(u.role for u in User.query.all())
+            return jsonify(ok=True, workers_created=cw, workers_updated=uw,
+                           users_created=cu, users_updated=uu,
+                           roles_now=dict(roles),
+                           note=("Every employee logs in with username = "
+                                 "password = their emp_code. Forced to change "
+                                 "password + enrol face on first login."))
+        except Exception as e:
+            db.session.rollback()
+            return jsonify(ok=False, error=f"{type(e).__name__}: {e}"), 500
+        finally:
+            try: os.unlink(tmp_path)
+            except OSError: pass
+
     @app.route("/setup/list-users")
     def setup_list_users():
         """First 200 users in the DB — for debugging which roles exist on Render.
