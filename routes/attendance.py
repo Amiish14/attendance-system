@@ -40,16 +40,22 @@ def worker_home():
 @bp.route("/enroll-face", methods=["GET", "POST"])
 @login_required
 def enroll_face():
-    """Worker (or admin acting on behalf) enrolls face descriptor."""
+    """Self-enrolment for any employee (Admin, ProcamRep, Worker), or admin
+       acting on behalf via ?worker_id=. Every employee with a linked Worker
+       record can enrol their own face — that's what unlocks gate-kiosk
+       identification for them."""
     worker = None
-    if current_user.role == ROLE_WORKER:
+    # 1) If an explicit ?worker_id= was passed, an Admin/Manager is enrolling
+    #    on behalf of someone else.
+    wid = request.args.get("worker_id")
+    if wid:
+        worker = Worker.query.get(int(wid))
+    # 2) Otherwise, the logged-in user is enrolling THEMSELVES — works for
+    #    any role that's linked to a Worker record.
+    elif getattr(current_user, "worker_id", None):
         worker = current_user.worker
-    else:
-        wid = request.args.get("worker_id")
-        if wid:
-            worker = Worker.query.get(int(wid))
     if not worker:
-        flash("Worker not found.", "error")
+        flash("No worker record linked to your account — ask HR to set one up.", "error")
         return redirect(url_for("index"))
 
     if request.method == "POST":
@@ -96,7 +102,9 @@ def enroll_face():
             db.session.commit()
             flash(f"Face enrolled with {len(poses)} pose(s): " +
                   ", ".join(poses.keys()) + ".", "success")
-            return redirect(url_for("attendance.worker_home"))
+            # Send the user to their role's home page after enrolment,
+            # not always the worker dashboard.
+            return redirect(url_for("index"))
 
     poses_required = list(current_app.config.get(
         "ENROLMENT_POSES", ["Centre", "Left", "Right", "Up", "Down"]))

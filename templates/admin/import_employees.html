@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Import PRERNA employees{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Import PROCAM employees from PRERNA</h1>
+
+<div class="pc-card" style="background:#fff8e6; border-left:4px solid #d39e00; margin-bottom:14px;">
+  <p style="margin:0; font-size:13.5px; color:#555;">
+    Drag-and-drop your latest <strong>PRERNA_Full_Backup_*.xlsx</strong> below. The
+    system reads the Employee Master sheet and creates / updates every employee:
+  </p>
+  <ul style="margin:8px 0 0 18px; font-size:13px; color:#555;">
+    <li><strong>PRERNA Role = SUPER_ADMIN / HR_ADMIN</strong> → HR Admin (full access — includes Tanima Mukherjee)</li>
+    <li><strong>PRERNA Role = MANAGER</strong> → ProcamRep (manager — sees their team)</li>
+    <li><strong>PRERNA Role = EMPLOYEE</strong> → Worker (face-punch through kiosk)</li>
+  </ul>
+  <p style="margin:8px 0 0; font-size:13px; color:#555;">
+    Login convention: <code>username = employee code</code>, <code>password = employee code</code>.
+    Every imported user is forced to change password and enrol face on first login.
+    Safe to re-run — it updates existing rows in place.
+  </p>
+</div>
+
+<div class="pc-card">
+  <h3 style="margin:0 0 12px;">Current state</h3>
+  <p style="font-size:14px; color:#555;">
+    Users in this database: <strong>{{ current_count }}</strong> ·
+    Workers: <strong>{{ workers }}</strong>
+  </p>
+
+  <h3 style="margin:18px 0 12px;">Upload PRERNA xlsx</h3>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".xlsx,.xlsm" required
+           style="display:block; width:100%; padding:12px; border:2px dashed #BC1D2F; border-radius:6px; background:#fff8f8; font-size:14px; margin-bottom:12px;">
+    <button class="pc-btn pc-btn-primary" type="submit" style="font-size:14px; padding:10px 20px;">
+      Import / re-classify everyone
+    </button>
+  </form>
+</div>
+{% endblock %}

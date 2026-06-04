@@ -206,6 +206,13 @@
     return { yaw, pitch };
   }
 
+  // Per-enrolment baseline captured from the FIRST successful Centre pose.
+  // Used to make Up/Down checks RELATIVE to the subject's own face geometry
+  // (resting pitch differs person-to-person — short face vs long face).
+  let baselinePitch = null;
+  /** Public — let PCEnrol reset this between enrolments / Start-over. */
+  function resetPoseBaseline() { baselinePitch = null; }
+
   /** Check whether the detected pose matches the requested pose.
    *  Returns { ok, reason } — reject the capture if it doesn't match. */
   function poseMatches(detection, expected) {
@@ -213,12 +220,18 @@
     const p = estimatePose(detection);
     if (!p) return { ok: true };  // landmarks missing → skip check rather than block
 
-    // Thresholds tuned by eyeballing real captures. Tighter for centre,
-    // looser for the angle poses (don't expect anyone to swivel 90°).
+    // Thresholds. Yaw is symmetric (turn left/right works the same).
+    // Pitch is asymmetric — most people's resting pitch is +0.30 to +0.55
+    // because the nose tip sits below the eye midpoint. So we use a baseline
+    // captured from the Centre pose and require Up/Down to move FROM IT.
     const Y_CENTRE = 0.20;   // |yaw| must be < this for "Centre"
-    const Y_SIDE   = 0.20;   // |yaw| must be > this for "Left"/"Right"
-    const P_CENTRE = 0.55;   // |pitch| must be < this for "Centre" (eyes-vs-nose ratio varies)
-    const P_VERT   = 0.30;   // pitch swing required for "Up"/"Down"
+    const Y_SIDE   = 0.18;   // |yaw| must be > this for "Left"/"Right" (loosened a hair)
+    const PITCH_UP_DELTA   = 0.10;  // need at least this much DECREASE from baseline for Up
+    const PITCH_DOWN_DELTA = 0.10;  // need at least this much INCREASE from baseline for Down
+    // Absolute fallback used when no baseline yet (defensive — shouldn't happen
+    // because Centre is always captured first).
+    const PITCH_UP_ABS   = 0.25;   // pitch <= 0.25 = clearly looking up
+    const PITCH_DOWN_ABS = 0.65;   // pitch >= 0.65 = clearly looking down
 
     const pose = (expected || "").toLowerCase();
     if (pose.includes("centre") || pose.includes("glasses")) {
@@ -227,10 +240,14 @@
         return { ok: false,
                  reason: "Look straight at the camera (you're turned " +
                          (p.yaw < 0 ? "left" : "right") + "). yaw=" + p.yaw.toFixed(2) };
+      // Lock in the subject's resting pitch on the FIRST good Centre capture.
+      if (baselinePitch === null) {
+        baselinePitch = p.pitch;
+      }
     }
     else if (pose.includes("left")) {
       // Subject must be turned to THEIR left → nose appears RIGHT of eye-mid in mirror image
-      // → yaw is NEGATIVE in our convention. Looser limit: we just want some turn.
+      // → yaw is NEGATIVE in our convention.
       if (p.yaw > -Y_SIDE)
         return { ok: false,
                  reason: "Turn your head MORE to the LEFT — yaw " + p.yaw.toFixed(2) +
@@ -243,15 +260,24 @@
                          " (need > +" + Y_SIDE + ")." };
     }
     else if (pose.includes("up")) {
-      // Looking up → nose moves UP relative to eyes → pitch decreases (negative)
-      if (p.pitch > -P_VERT + 0.10)   // small offset because resting pitch isn't zero
+      // Looking up → nose moves UP relative to eyes → pitch DECREASES from baseline.
+      const target = (baselinePitch !== null)
+        ? (baselinePitch - PITCH_UP_DELTA)
+        : PITCH_UP_ABS;
+      if (p.pitch > target)
         return { ok: false,
-                 reason: "Tilt your head UP MORE — pitch " + p.pitch.toFixed(2) + "." };
+                 reason: "Tilt your head UP MORE — pitch " + p.pitch.toFixed(2) +
+                         " (need ≤ " + target.toFixed(2) + ")." };
     }
     else if (pose.includes("down")) {
-      if (p.pitch < P_VERT)
+      // Looking down → nose moves DOWN relative to eyes → pitch INCREASES from baseline.
+      const target = (baselinePitch !== null)
+        ? (baselinePitch + PITCH_DOWN_DELTA)
+        : PITCH_DOWN_ABS;
+      if (p.pitch < target)
         return { ok: false,
-                 reason: "Tilt your head DOWN MORE — pitch " + p.pitch.toFixed(2) + "." };
+                 reason: "Tilt your head DOWN MORE — pitch " + p.pitch.toFixed(2) +
+                         " (need ≥ " + target.toFixed(2) + ")." };
     }
     return { ok: true };
   }
@@ -373,7 +399,8 @@
     return descriptors;
   }
 
-  window.PCFace = { start: startCam, capture, captureMany };
+  window.PCFace = { start: startCam, capture, captureMany,
+                    resetPoseBaseline };
   document.addEventListener("DOMContentLoaded", () => {
     if (document.getElementById(VIDEO_ID)) startCam();
   });

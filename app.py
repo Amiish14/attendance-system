@@ -72,9 +72,18 @@ def create_app(config_class=Config):
         if not current_user.is_authenticated:
             return redirect(url_for("auth.login"))
         role = current_user.role
-        # First-login force-chain (any role with must_change_password set)
+        # First-login force-chain: must change password first…
         if getattr(current_user, "must_change_password", False):
             return redirect(url_for("auth.change_password"))
+        # …then EVERY employee linked to a Worker record must enrol their
+        # face (Admin, ProcamRep, Worker — gate kiosk recognises everyone).
+        # Gate guards don't punch, so they're exempt.
+        if (role != ROLE_GATE_GUARD
+                and getattr(current_user, "worker_id", None)):
+            w = current_user.worker
+            if w and not w.face_template:
+                return redirect(url_for("attendance.enroll_face"))
+        # Once enrolled (or if exempt), route by role to the right home page.
         if role == ROLE_ADMIN:
             return redirect(url_for("admin.dashboard"))
         if role == ROLE_PROCAM_REP:
@@ -83,11 +92,6 @@ def create_app(config_class=Config):
             return redirect(url_for("vendor.dashboard"))
         if role == ROLE_GATE_GUARD:
             return redirect(url_for("kiosk.gate_screen"))
-        # Workers: if no face template yet, force enrolment
-        if role == ROLE_WORKER and current_user.worker_id:
-            w = current_user.worker
-            if w and not w.face_template:
-                return redirect(url_for("attendance.enroll_face"))
         return redirect(url_for("attendance.worker_home"))
 
     # auto-create tables on first boot + ensure an HR admin exists.
@@ -268,6 +272,11 @@ def _patch_schema():
         ("attendance", "punch_in_at",  DT),
         ("attendance", "punch_out_at", DT),
         ("agencies", "approver_mode", "VARCHAR(16) DEFAULT 'hr_only' NOT NULL"),
+        # PRERNA — manager linkage + designation/vertical/grade per worker
+        ("workers", "manager_code", "VARCHAR(32)"),
+        ("workers", "designation",  "VARCHAR(120)"),
+        ("workers", "vertical",     "VARCHAR(80)"),
+        ("workers", "grade",        "VARCHAR(20)"),
     ]
     for table, column, coldef in expected_columns:
         try:

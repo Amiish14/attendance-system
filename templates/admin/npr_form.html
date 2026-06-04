@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}New NPR worker{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Onboard non-payroll worker</h1>
+
+<div class="pc-card" style="background:#fff8e6; border-left:4px solid #d39e00; margin-bottom:14px;">
+  <p style="margin:0; font-size:13.5px; color:#555;">
+    NPR (non-payroll) workers are contractor / vendor staff.
+    They get an <strong>auto-generated code</strong> in the format
+    <code>NPR + 4-digit number + year</code>. Their attendance is <strong>dual-approved</strong>
+    (Contractor + Procam Rep) before it can be billed.
+  </p>
+</div>
+
+<form method="post" class="pc-card">
+  <h3>Identity</h3>
+  <div class="pc-form-row">
+    <div>
+      <label>Worker code <span style="color:#888; font-size:11px;">(auto)</span></label>
+      <input name="code" value="{{ suggested_code }}" readonly
+             style="background:#f7f7f7; font-family:monospace; font-weight:700;">
+      <small style="color:#888;">Next code for {{ suggested_code[-4:] }} — change only if you must.</small>
+    </div>
+    <div><label>Full name *</label><input name="full_name" required></div>
+    <div><label>Gender</label>
+      <select name="gender">
+        <option value="">—</option><option>Male</option><option>Female</option><option>Other</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="pc-form-row">
+    <div>
+      <label>Vendor agency</label>
+      <input value="{{ agency.name }} ({{ agency.code }})" readonly
+             style="background:#f7f7f7;">
+      <small style="color:#888;">Approval mode: <strong>{{ agency.approver_mode }}</strong> — Contractor + Procam Rep both sign off.</small>
+    </div>
+    <div><label>Designation</label><input name="designation" placeholder="e.g. Driver, Helper"></div>
+    <div><label>Skill</label>
+      <select name="skill_id">
+        <option value="">—</option>
+        {% for s in skills %}<option value="{{ s.id }}">{{ s.name }} ({{ s.category }})</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="pc-form-row">
+    <div><label>Mobile</label><input name="mobile"></div>
+    <div><label>Aadhaar</label><input name="aadhaar" maxlength="12"></div>
+    <div><label>Onboarded on</label><input name="onboarded_on" type="date"></div>
+  </div>
+
+  <h3>Bank (for vendor billing)</h3>
+  <div class="pc-form-row">
+    <div><label>Bank name</label><input name="bank_name"></div>
+    <div><label>Account no.</label><input name="account_no"></div>
+    <div><label>IFSC</label><input name="ifsc"></div>
+  </div>
+
+  <div style="background:#eaf6ec; border-left:4px solid #1a7f37; padding:10px 14px; border-radius:4px; margin:14px 0; font-size:13px;">
+    <strong>Auto-login created.</strong> Username = <code>{{ suggested_code }}</code>,
+    password = <code>{{ suggested_code }}</code>. The worker will be forced to
+    change the password and enrol their face on first login.
+  </div>
+
+  <div style="display:flex; gap:8px;">
+    <button class="pc-btn pc-btn-primary" type="submit">Create NPR worker</button>
+    <a class="pc-btn pc-btn-ghost" href="{{ url_for('admin.workers') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

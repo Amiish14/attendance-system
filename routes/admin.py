@@ -1,17 +1,63 @@
 """Admin blueprint — onboards agencies, projects, skills, rate cards, workers."""
+import os, re, tempfile
+from collections import Counter
 from datetime import date
 from decimal import Decimal
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, jsonify
 from flask_login import login_required, current_user
 
 from models import (
     db, User, Agency, Project, Skill, RateCard, Worker,
     Attendance, Invoice, ROLE_ADMIN, ROLE_PROCAM_REP, ROLE_VENDOR_REP, ROLE_WORKER,
+    APPROVER_DUAL, APPROVER_NONE, CAT_SKILLED,
 )
 from utils import role_required, parse_date
 
 bp = Blueprint("admin", __name__)
+
+
+# ---------------------------------------------------------------------------
+# NPR (Non-Payroll) worker creation
+# ---------------------------------------------------------------------------
+# Worker code format requested by HR:
+#   NPR  +  4-digit sequence  +  4-digit year
+# Example: NPR00012026, NPR00022026, ...  Sequence restarts each calendar year.
+NPR_CODE_RE = re.compile(r"^NPR(\d{4})(\d{4})$")
+NPR_AGENCY_CODE = "NPR"
+NPR_AGENCY_NAME = "Non-Payroll Workers"
+
+
+def _next_npr_code(year: int) -> str:
+    """Find the largest existing NPR####<year> code and return the next one."""
+    prefix = "NPR"
+    suffix = str(year)
+    existing = (Worker.query
+                .filter(Worker.code.like(f"{prefix}%{suffix}"))
+                .all())
+    max_seq = 0
+    for w in existing:
+        m = NPR_CODE_RE.match(w.code or "")
+        if m and int(m.group(2)) == year:
+            max_seq = max(max_seq, int(m.group(1)))
+    return f"NPR{max_seq + 1:04d}{year}"
+
+
+def _ensure_npr_agency() -> Agency:
+    """Find/create the umbrella NPR agency (dual-approval mode)."""
+    a = Agency.query.filter_by(code=NPR_AGENCY_CODE).first()
+    if a:
+        return a
+    a = Agency(
+        code=NPR_AGENCY_CODE, name=NPR_AGENCY_NAME,
+        contact_person="HR Admin", email="hr@procamlogistics.com",
+        address="Various vendors", gstin=None, pan=None,
+        default_gst_rate=Decimal("18.00"), default_tds_rate=Decimal("2.00"),
+        onboarded_on=date.today(), is_active=True,
+        approver_mode=APPROVER_DUAL,
+    )
+    db.session.add(a); db.session.flush()
+    return a
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +333,80 @@ def worker_new():
 
 
 # ---------------------------------------------------------------------------
+# NPR worker creation — auto-generates code as NPR0001YYYY, NPR0002YYYY, ...
+# ---------------------------------------------------------------------------
+@bp.route("/npr/new", methods=["GET", "POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def npr_new():
+    """Create a Non-Payroll worker. Auto-assigns the next NPR####YYYY code,
+       puts them under the NPR vendor agency (dual-approval), and gives them
+       a login with username = code, password = code, must_change_password=True."""
+    agency = _ensure_npr_agency()
+    year   = date.today().year
+    suggested_code = _next_npr_code(year)
+
+    if request.method == "POST":
+        f = request.form
+        # Honour the suggested code unless admin manually overrode (rare).
+        code = (f.get("code") or suggested_code).strip()
+        full_name = (f.get("full_name") or "").strip()
+        if not full_name:
+            flash("Worker name is required.", "error")
+            return redirect(url_for("admin.npr_new"))
+
+        # Worker
+        w = Worker(
+            code=code, full_name=full_name,
+            agency_id=agency.id,
+            skill_id=int(f["skill_id"]) if f.get("skill_id") else None,
+            gender=f.get("gender") or "",
+            mobile=f.get("mobile") or "",
+            aadhaar=f.get("aadhaar") or "",
+            bank_name=f.get("bank_name") or "",
+            account_no=f.get("account_no") or "",
+            ifsc=f.get("ifsc") or "",
+            designation=(f.get("designation") or "").strip()[:120] or None,
+            onboarded_on=parse_date(f.get("onboarded_on")) or date.today(),
+        )
+        db.session.add(w); db.session.flush()
+
+        # Login — username = code, password = code (must change on first login)
+        u = User(
+            username=code,
+            display_name=full_name,
+            role=ROLE_WORKER,
+            worker_id=w.id,
+            agency_id=agency.id,
+            must_change_password=True,
+            is_active=True,
+        )
+        u.set_password(code)
+        db.session.add(u)
+        db.session.commit()
+
+        flash(f"NPR worker '{full_name}' created with code {code}. "
+              f"Login: {code} / {code} (must change on first login).", "success")
+        return redirect(url_for("admin.workers"))
+
+    return render_template(
+        "admin/npr_form.html",
+        suggested_code=suggested_code,
+        agency=agency,
+        skills=Skill.query.order_by(Skill.name).all(),
+    )
+
+
+@bp.route("/npr/next-code")
+@login_required
+@role_required(ROLE_ADMIN)
+def npr_next_code():
+    """JSON helper — what is the next NPR code for this year?"""
+    year = int(request.args.get("year") or date.today().year)
+    return jsonify(next_code=_next_npr_code(year), year=year)
+
+
+# ---------------------------------------------------------------------------
 # Users (light list — admin can create Procam Reps & Vendor Reps here)
 # ---------------------------------------------------------------------------
 @bp.route("/users")
@@ -469,3 +589,177 @@ def attendance_approvals():
     decided_today = [a for a in q.all() if a.is_dual_approved]
     return render_template("admin/attendance_approvals.html",
                            pending=pending, decided=decided_today, the_date=d)
+
+
+# ---------------------------------------------------------------------------
+# Browser-upload PRERNA importer — for Render where Terminal access is painful.
+# Logs in as HR Admin → /admin/import-employees → drag & drop PRERNA xlsx →
+# all 124 employees created/updated with correct PRERNA Role mapping,
+# Tanima Mukherjee (or whoever PRERNA flags as HR_ADMIN) auto-promoted to Admin.
+# ---------------------------------------------------------------------------
+_PRERNA_ROLE_MAP = {
+    "SUPER_ADMIN": ROLE_ADMIN,
+    "HR_ADMIN":    ROLE_ADMIN,
+    "MANAGER":     ROLE_PROCAM_REP,
+    "EMPLOYEE":    ROLE_WORKER,
+}
+
+
+def _ensure_procam_agency() -> Agency:
+    """In-house PROCAM agency, mode = none (no approval)."""
+    a = Agency.query.filter_by(code="PROCAM").first()
+    if a:
+        if a.approver_mode != APPROVER_NONE:
+            a.approver_mode = APPROVER_NONE
+        return a
+    a = Agency(
+        code="PROCAM", name="Procam Logistics (In-house)",
+        contact_person="HR Admin", email="hr@procamlogistics.com",
+        address="731, Westend Mall, District Centre, Janakpuri, New Delhi-110058.",
+        gstin=None, pan=None,
+        default_gst_rate=Decimal("0.00"), default_tds_rate=Decimal("0.00"),
+        onboarded_on=date.today(), is_active=True,
+        approver_mode=APPROVER_NONE,
+    )
+    db.session.add(a); db.session.flush()
+    return a
+
+
+def _ensure_skill_inline(name: str) -> Skill:
+    name = (name or "Employee").strip()[:80] or "Employee"
+    sk = Skill.query.filter_by(name=name).first()
+    if sk:
+        return sk
+    sk = Skill(name=name, category=CAT_SKILLED)
+    db.session.add(sk); db.session.flush()
+    return sk
+
+
+@bp.route("/import-employees", methods=["GET", "POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def import_employees():
+    """Browser-based PRERNA xlsx importer. POST an xlsx file → bootstrap
+       everyone in one click. Idempotent — safe to re-run on updates."""
+    if request.method == "GET":
+        # Show a small upload form with the current employee count
+        return render_template("admin/import_employees.html",
+                               current_count=User.query.count(),
+                               workers=Worker.query.count())
+
+    # POST — handle the upload
+    f = request.files.get("file")
+    if not f or not f.filename.lower().endswith((".xlsx", ".xlsm")):
+        flash("Please choose a PRERNA xlsx file.", "error")
+        return redirect(url_for("admin.import_employees"))
+
+    # Save to a tempfile so openpyxl can read it
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tf:
+        f.save(tf.name)
+        tmp_path = tf.name
+
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(filename=tmp_path, read_only=True, data_only=True)
+
+        ws = None
+        for name in wb.sheetnames:
+            if "employee" in name.lower() or "master" in name.lower():
+                ws = wb[name]; break
+        if ws is None:
+            ws = wb.active
+
+        rows_iter = ws.iter_rows(values_only=True)
+        headers = [str(h).strip() if h else "" for h in next(rows_iter)]
+        idx = {h.lower(): i for i, h in enumerate(headers)}
+
+        def col(row, key):
+            i = idx.get(key.lower())
+            return row[i] if i is not None and i < len(row) else None
+
+        agency = _ensure_procam_agency()
+        created_w = updated_w = created_u = updated_u = 0
+
+        for row in rows_iter:
+            if not row or all(v in (None, "") for v in row):
+                continue
+            emp_code = col(row, "Emp Code")
+            full_name = col(row, "Full Name")
+            if not emp_code or not full_name:
+                continue
+            emp_code  = str(emp_code).strip()
+            full_name = str(full_name).strip()
+
+            vertical    = (str(col(row, "Vertical")    or "").strip())[:80] or None
+            designation = (str(col(row, "Designation") or "").strip())[:120] or "Employee"
+            grade       = (str(col(row, "Grade")       or "").strip())[:20] or None
+            mgr_code    = (str(col(row, "Mgr Code")    or "").strip())[:32] or None
+            prerna_role = (str(col(row, "Role")        or "").strip()) or "EMPLOYEE"
+            app_role    = _PRERNA_ROLE_MAP.get(
+                prerna_role.strip().upper().replace(" ", "_"), ROLE_WORKER)
+
+            sk = _ensure_skill_inline(designation)
+
+            # Worker
+            w = Worker.query.filter_by(code=emp_code).first()
+            if not w:
+                w = Worker(
+                    code=emp_code, full_name=full_name,
+                    agency_id=agency.id, skill_id=sk.id,
+                    is_active=True, onboarded_on=date.today(),
+                    manager_code=mgr_code, designation=designation,
+                    vertical=vertical, grade=grade,
+                )
+                db.session.add(w); db.session.flush()
+                created_w += 1
+            else:
+                w.full_name = full_name
+                w.agency_id = agency.id
+                w.skill_id  = sk.id
+                w.is_active = True
+                w.manager_code = mgr_code
+                w.designation  = designation
+                w.vertical     = vertical
+                w.grade        = grade
+                updated_w += 1
+
+            # User
+            u = User.query.filter_by(username=emp_code).first()
+            if not u:
+                u = User(
+                    username=emp_code, display_name=full_name,
+                    role=app_role, is_active=True,
+                    must_change_password=True,
+                    worker_id=w.id,
+                )
+                u.set_password(emp_code)
+                db.session.add(u)
+                created_u += 1
+            else:
+                u.display_name = full_name
+                u.worker_id    = w.id
+                u.role         = app_role          # re-classify on every upload
+                u.is_active    = True
+                updated_u += 1
+
+            if (created_w + updated_w) % 50 == 0:
+                db.session.commit()
+
+        db.session.commit()
+        wb.close()
+
+        # Tally final role breakdown for the success page
+        role_counts = Counter(u.role for u in User.query.all())
+
+        flash(f"Imported successfully. Workers: {created_w} new + {updated_w} updated. "
+              f"Users: {created_u} new + {updated_u} updated. "
+              f"Roles now: {dict(role_counts)}", "success")
+        return redirect(url_for("admin.import_employees"))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Import failed: {type(e).__name__}: {e}", "error")
+        return redirect(url_for("admin.import_employees"))
+    finally:
+        try: os.unlink(tmp_path)
+        except OSError: pass

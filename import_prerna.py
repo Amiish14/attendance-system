@@ -20,10 +20,28 @@ from openpyxl import load_workbook
 
 from app import create_app
 from models import (db, User, Agency, Skill, Worker,
-                    ROLE_WORKER, CAT_SKILLED)
+                    ROLE_ADMIN, ROLE_PROCAM_REP, ROLE_WORKER, CAT_SKILLED)
 
 PROCAM_AGENCY_CODE = "PROCAM"
 PROCAM_AGENCY_NAME = "Procam Logistics (In-house)"
+
+
+# PRERNA's "Role" column → app role.
+#   SUPER_ADMIN, HR_ADMIN → ROLE_ADMIN  (run the HRMS, approve attendance)
+#   MANAGER               → ROLE_PROCAM_REP (manager — approves their team)
+#   EMPLOYEE (default)    → ROLE_WORKER (face-punch through kiosk)
+PRERNA_ROLE_MAP = {
+    "SUPER_ADMIN": ROLE_ADMIN,
+    "HR_ADMIN":    ROLE_ADMIN,
+    "MANAGER":     ROLE_PROCAM_REP,
+    "EMPLOYEE":    ROLE_WORKER,
+}
+
+
+def _role_for(prerna_role: str) -> str:
+    """Convert PRERNA Role text to one of our ROLE_* constants. Default = Worker."""
+    key = (prerna_role or "").strip().upper().replace(" ", "_")
+    return PRERNA_ROLE_MAP.get(key, ROLE_WORKER)
 
 
 def _ensure_agency():
@@ -92,8 +110,11 @@ def import_prerna(path: str):
             full_name = str(full_name).strip()
 
             vertical = (str(col(row, "Vertical") or "").strip())[:80] or None
-            designation = (str(col(row, "Designation") or "").strip())[:80] or "Employee"
+            designation = (str(col(row, "Designation") or "").strip())[:120] or "Employee"
             grade = (str(col(row, "Grade") or "").strip())[:20] or None
+            mgr_code = (str(col(row, "Mgr Code") or "").strip())[:32] or None
+            prerna_role = (str(col(row, "Role") or "").strip()) or "EMPLOYEE"
+            app_role = _role_for(prerna_role)
 
             sk = _ensure_skill(designation, category=CAT_SKILLED)
 
@@ -104,6 +125,8 @@ def import_prerna(path: str):
                     code=emp_code, full_name=full_name,
                     agency_id=agency.id, skill_id=sk.id,
                     is_active=True, onboarded_on=date.today(),
+                    manager_code=mgr_code, designation=designation,
+                    vertical=vertical, grade=grade,
                 )
                 db.session.add(w); db.session.flush()
                 created_w += 1
@@ -112,17 +135,21 @@ def import_prerna(path: str):
                 w.agency_id = agency.id
                 w.skill_id = sk.id
                 w.is_active = True
+                w.manager_code = mgr_code
+                w.designation  = designation
+                w.vertical     = vertical
+                w.grade        = grade
                 updated_w += 1
 
-            # Upsert User
+            # Upsert User — role comes from PRERNA's Role column
             u = User.query.filter_by(username=emp_code).first()
             if not u:
                 u = User(
                     username=emp_code, display_name=full_name,
-                    role=ROLE_WORKER, is_active=True,
+                    role=app_role, is_active=True,
                     must_change_password=True,   # forced first-login reset
-                    worker_id=w.id,
-                )
+                    worker_id=w.id,              # everyone is linked to their Worker
+                )                                # record for the employee directory
                 u.set_password(emp_code)         # pw == username convention
                 db.session.add(u)
                 created_u += 1
@@ -131,6 +158,7 @@ def import_prerna(path: str):
                 if u.worker_id != w.id:
                     u.worker_id = w.id
                 u.display_name = full_name
+                u.role = app_role                # also re-sync role on every import
                 u.is_active = True
                 updated_u += 1
 
@@ -140,12 +168,20 @@ def import_prerna(path: str):
         db.session.commit()
         wb.close()
 
+        # Role breakdown for the audit log
+        from collections import Counter
+        role_counts = Counter(u.role for u in User.query.all())
+
         print()
-        print(f"Workers : {created_w} created · {updated_w} updated")
-        print(f"Users   : {created_u} created · {updated_u} updated")
+        print(f"Worker records : {created_w} created · {updated_w} updated")
+        print(f"User accounts  : {created_u} created · {updated_u} updated")
+        print()
+        print("Role breakdown (all users in DB):")
+        for r, n in role_counts.most_common():
+            print(f"  {n:4d} × {r}")
         print()
         print("Login convention: username = employee code, password = employee code.")
-        print("Every user must change password on first login, then enrol their face.")
+        print("Every user must change password on first login. Workers also enrol face.")
 
 
 if __name__ == "__main__":

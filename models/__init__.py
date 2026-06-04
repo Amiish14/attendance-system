@@ -88,14 +88,16 @@ class Agency(db.Model):
     onboarded_on = db.Column(db.Date, default=date.today)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     # Approval mode for attendance under this agency:
-    #   'hr_only'  → one approval from HR (used for Procam in-house staff)
-    #   'dual'     → vendor rep + Procam rep (used for contract manpower)
-    approver_mode = db.Column(db.String(16), default="hr_only", nullable=False)
+    #   'none'     → no approval required (PROCAM in-house — punch is the record)
+    #   'hr_only'  → one approval from HR
+    #   'dual'     → vendor rep + Procam rep (used for contract manpower / NPR)
+    approver_mode = db.Column(db.String(16), default="none", nullable=False)
 
 
 # Approver-mode constants
+APPROVER_NONE    = "none"      # punch is the record; HR downloads daily Excel
 APPROVER_HR_ONLY = "hr_only"
-APPROVER_DUAL = "dual"
+APPROVER_DUAL    = "dual"
 
 
 class Project(db.Model):
@@ -163,6 +165,15 @@ class Worker(db.Model):
     photo_path = db.Column(db.String(255))
     onboarded_on = db.Column(db.Date, default=date.today)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Reporting line — captured from PRERNA's "Mgr Code" column.
+    # Stored as the manager's emp_code (string) rather than a worker FK so the
+    # importer can run before the manager's row exists, and so vendor workers
+    # (no manager) can stay NULL. Approval routing reads this to find the
+    # manager's User account for the first-level sign-off.
+    manager_code = db.Column(db.String(32))
+    designation  = db.Column(db.String(120))   # e.g. "Sr Manager", "Driver"
+    vertical     = db.Column(db.String(80))    # e.g. "Warehouse", "Finance"
+    grade        = db.Column(db.String(20))    # e.g. "M2", "J1"
 
     agency = db.relationship("Agency", backref="workers")
     skill = db.relationship("Skill")
@@ -279,11 +290,14 @@ class Attendance(db.Model):
     @property
     def is_dual_approved(self) -> bool:
         """Billable when approved per the worker's agency mode.
+            - none    : punch IS the record — auto-approved on creation
             - hr_only : only the HR/Client side must be Approved
             - dual    : both Vendor and Client sides must be Approved
            Backwards-compatible: still called is_dual_approved everywhere."""
         mode = (self.worker.agency.approver_mode if self.worker and self.worker.agency
-                else APPROVER_HR_ONLY)
+                else APPROVER_NONE)
+        if mode == APPROVER_NONE:
+            return True
         c = self.approval("Client")
         if mode == APPROVER_HR_ONLY:
             return bool(c and c.status == "Approved")

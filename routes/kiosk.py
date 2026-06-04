@@ -152,19 +152,27 @@ def identify():
     att.source = f"Kiosk:{kind}:guard={current_user.username}"
 
     # Make sure the right approval rows exist for THIS worker's agency mode.
-    # - hr_only (in-house) → only HR/Client side
-    # - dual (vendor)      → Vendor + Client both
+    # - none    (PROCAM)   → punch IS the record, no approval row created
+    # - hr_only (legacy)   → only HR/Client side
+    # - dual    (NPR/vendor) → Vendor + Client both must sign off
     sides_now = {a.side for a in att.approvals}
-    mode = worker.agency.approver_mode if worker.agency else "hr_only"
+    mode = worker.agency.approver_mode if worker.agency else "none"
     if mode == "dual" and "Vendor" not in sides_now:
         db.session.add(AttendanceApproval(attendance_id=att.id, side="Vendor",
                                           status="Pending", decided_by_id=current_user.id))
-    if "Client" not in sides_now:
+    if mode in ("hr_only", "dual") and "Client" not in sides_now:
         db.session.add(AttendanceApproval(attendance_id=att.id, side="Client",
                                           status="Pending", decided_by_id=current_user.id))
     db.session.commit()
 
     flagged = best_dist > threshold  # passed floor but below strict threshold
+    # Tail message depends on whether approval is needed
+    if mode == "none":
+        tail = "Recorded — no approval needed."
+    elif mode == "dual":
+        tail = "Pending Contractor + Procam Rep approval."
+    else:
+        tail = "Pending HR approval."
     return jsonify(
         ok=True, kind=kind, new_row=is_new, flagged_for_review=flagged,
         worker={"code": worker.code, "name": worker.full_name,
@@ -174,8 +182,7 @@ def identify():
         similarity_pct=confidence, distance=round(best_dist, 4),
         attendance_id=att.id, project_id=project_id,
         message=(f"{'Welcome' if kind == 'in' else 'Goodbye'}, {worker.full_name} "
-                 f"— {confidence}% match. {'⚠ flagged for review' if flagged else ''} "
-                 f"Pending Contractor + Procam Rep approval.")
+                 f"— {confidence}% match. {'⚠ flagged for review' if flagged else ''} {tail}")
     )
 
 

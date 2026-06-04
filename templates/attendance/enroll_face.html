@@ -181,6 +181,10 @@
     Object.keys(captured).forEach(k => delete captured[k]);
     payloadEl().value = '';
     saveBtn().disabled = true;
+    // Drop the per-person pitch baseline so the next Centre capture re-locks it.
+    if (window.PCFace && window.PCFace.resetPoseBaseline) {
+      window.PCFace.resetPoseBaseline();
+    }
     showCurrent();
   }
 
