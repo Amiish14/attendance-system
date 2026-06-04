@@ -123,18 +123,39 @@ def _ensure_admin():
         print(f"[bootstrap] admin user '{username}' already exists "
               f"(id={existing.id}, active={existing.is_active}, "
               f"hash_len={len(existing.password_hash or '')})")
+    else:
+        u = User(username=username, display_name="HR Admin",
+                 role=ROLE_ADMIN, is_active=True, must_change_password=True)
+        u.set_password(password)
+        print(f"[bootstrap] hashing test: set→verify={u.check_password(password)}")
+        db.session.add(u)
+        try:
+            db.session.commit()
+            print(f"[bootstrap] admin user '{username}' created (must_change_password=True)")
+        except Exception as e:
+            db.session.rollback()
+            print(f"[bootstrap] could not create admin: {type(e).__name__}: {e}")
+
+    # Also ensure the gate kiosk guard exists. Same env-var override pattern.
+    # We deliberately leave must_change_password=False because the kiosk is a
+    # shared device manned by rotating staff — forcing each shift to set a
+    # new password would be hostile UX.
+    g_user = os.environ.get("GATE_USERNAME", "gate1")
+    g_pass = os.environ.get("GATE_PASSWORD", "gate1")
+    g_existing = User.query.filter_by(username=g_user).first()
+    if g_existing:
+        print(f"[bootstrap] gate user '{g_user}' already exists")
         return
-    u = User(username=username, display_name="HR Admin",
-             role=ROLE_ADMIN, is_active=True, must_change_password=True)
-    u.set_password(password)
-    print(f"[bootstrap] hashing test: set→verify={u.check_password(password)}")
-    db.session.add(u)
+    g = User(username=g_user, display_name="Gate 1 Security",
+             role=ROLE_GATE_GUARD, is_active=True, must_change_password=False)
+    g.set_password(g_pass)
+    db.session.add(g)
     try:
         db.session.commit()
-        print(f"[bootstrap] admin user '{username}' created (must_change_password=True)")
+        print(f"[bootstrap] gate user '{g_user}' created (pw='{g_pass}')")
     except Exception as e:
         db.session.rollback()
-        print(f"[bootstrap] could not create admin: {type(e).__name__}: {e}")
+        print(f"[bootstrap] could not create gate guard: {type(e).__name__}: {e}")
 
 
 def _register_setup_routes(app):
