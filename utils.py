@@ -1,14 +1,58 @@
-"""Shared helpers: JWT, role decorators, number formatting, words."""
+"""Shared helpers: JWT, role decorators, number formatting, words, IST clock."""
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from functools import wraps
 
 import jwt
 from flask import current_app, g, jsonify, request, abort
 from flask_login import current_user
+
+
+# ---------------------------------------------------------------------------
+# Indian Standard Time (UTC+5:30)
+# ---------------------------------------------------------------------------
+# Every datetime in the DB is stored as naive UTC (the SQLAlchemy default
+# for `datetime.utcnow()`). The rest of the app expects naive datetimes too.
+# These helpers convert UTC→IST for display, and provide a single Jinja
+# filter so templates don't have to do timezone math each time.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def to_ist(dt: datetime | None) -> datetime | None:
+    """Return a tz-aware IST datetime, or None if input is None.
+    Treats naive datetimes as UTC (which is what we always store)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(IST)
+
+
+def ist_now() -> datetime:
+    """Tz-aware 'now' in IST. Useful when generating filenames or report headers."""
+    return datetime.now(IST)
+
+
+def fmt_ist(dt: datetime | None, fmt: str = "%d %b %Y, %I:%M %p") -> str:
+    """Default human format: '04 Jun 2026, 06:42 PM'. Pass a custom strftime
+    string for other layouts. Returns '' for None — safe in templates."""
+    ist = to_ist(dt)
+    return "" if ist is None else ist.strftime(fmt) + " IST"
+
+
+def fmt_ist_time(dt: datetime | None) -> str:
+    """Just the clock part: '06:42 PM IST'. Used in kiosk feeds / punch logs."""
+    ist = to_ist(dt)
+    return "" if ist is None else ist.strftime("%I:%M %p") + " IST"
+
+
+def fmt_ist_date(dt: datetime | None) -> str:
+    """Date only: '04 Jun 2026'. No 'IST' suffix because dates aren't timezoned."""
+    ist = to_ist(dt)
+    return "" if ist is None else ist.strftime("%d %b %Y")
 
 
 # ---------------------------------------------------------------------------

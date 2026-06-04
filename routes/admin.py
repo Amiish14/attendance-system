@@ -12,7 +12,7 @@ from models import (
     Attendance, Invoice, ROLE_ADMIN, ROLE_PROCAM_REP, ROLE_VENDOR_REP, ROLE_WORKER,
     APPROVER_DUAL, APPROVER_NONE, CAT_SKILLED,
 )
-from utils import role_required, parse_date
+from utils import role_required, parse_date, to_ist
 
 bp = Blueprint("admin", __name__)
 
@@ -498,7 +498,9 @@ def attendance_daily_xlsx():
         c.alignment = Alignment(horizontal="center", vertical="center")
 
     def _fmt_t(dt):
-        return dt.strftime("%H:%M:%S") if dt else ""
+        # Excel cells get IST clock — matches what HR sees on the web page.
+        ist = to_ist(dt)
+        return ist.strftime("%H:%M:%S") if ist else ""
 
     for i, a in enumerate(rows, start=3):
         w = a.worker

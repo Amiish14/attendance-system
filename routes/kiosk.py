@@ -25,7 +25,7 @@ from flask_login import login_required, current_user
 from models import (db, Worker, FaceTemplate, Project, Attendance,
                    AttendanceApproval, ROLE_GATE_GUARD, ROLE_ADMIN,
                    ATT_PRESENT)
-from utils import role_required, descriptor_loads, best_face_match
+from utils import role_required, descriptor_loads, best_face_match, fmt_ist_time
 
 bp = Blueprint("kiosk", __name__)
 
@@ -226,11 +226,10 @@ def recent_punches():
                     Attendance.source.like("Kiosk%"))
             .order_by(Attendance.captured_at.desc())
             .limit(20).all())
+    # Times shown to the kiosk operator are always IST.
     return jsonify(rows=[{
         "code": r.worker.code if r.worker else "?",
         "name": r.worker.full_name if r.worker else "?",
-        "at": r.captured_at.replace(tzinfo=timezone.utc)
-                          .astimezone(timezone(timedelta(hours=5, minutes=30)))
-                          .strftime("%H:%M:%S") if r.captured_at else "",
+        "at": fmt_ist_time(r.captured_at),
         "source": r.source or "",
     } for r in rows])

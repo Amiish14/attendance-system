@@ -70,7 +70,7 @@
         <td>{{ w.vertical or "—" }}</td>
         <td>
           {% if t %}
-            <span class="pc-badge approved">{{ t.enrolled_at.strftime("%d %b %Y %H:%M") if t.enrolled_at else "—" }}</span>
+            <span class="pc-badge approved">{{ (t.enrolled_at | ist) or "—" }}</span>
           {% else %}
             <span class="pc-badge pending">Not enrolled</span>
           {% endif %}

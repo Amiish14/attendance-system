@@ -7,7 +7,8 @@ from flask_migrate import Migrate
 from config import Config
 from models import (db, User, ROLE_ADMIN, ROLE_PROCAM_REP, ROLE_VENDOR_REP,
                     ROLE_WORKER, ROLE_GATE_GUARD)
-from utils import indian_commas, amount_in_words
+from utils import (indian_commas, amount_in_words,
+                   to_ist, ist_now, fmt_ist, fmt_ist_time, fmt_ist_date)
 
 login_manager = LoginManager()
 migrate = Migrate()
@@ -42,9 +43,20 @@ def create_app(config_class=Config):
         ROLE_PROCAM_REP=ROLE_PROCAM_REP,
         ROLE_VENDOR_REP=ROLE_VENDOR_REP,
         ROLE_WORKER=ROLE_WORKER,
+        # Convenience for templates that want the current IST clock.
+        now_ist=ist_now,
     )
     app.jinja_env.filters["incomma"] = indian_commas
     app.jinja_env.filters["inwords"] = amount_in_words
+    # Timezone filters — every datetime rendered in a template should use one
+    # of these so the user sees IST instead of stored UTC.
+    #   {{ row.captured_at | ist }}              → "04 Jun 2026, 06:42 PM IST"
+    #   {{ row.captured_at | ist_time }}         → "06:42 PM IST"
+    #   {{ row.work_date   | ist_date }}         → "04 Jun 2026"
+    #   {{ row.captured_at | ist('%H:%M:%S') }}  → custom strftime
+    app.jinja_env.filters["ist"]      = fmt_ist
+    app.jinja_env.filters["ist_time"] = fmt_ist_time
+    app.jinja_env.filters["ist_date"] = fmt_ist_date
 
     # Blueprints
     from routes.auth import bp as auth_bp

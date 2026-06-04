@@ -12,8 +12,8 @@
   <div style="color:var(--pc-grey); font-size:13px; line-height:1.6;">
     {% if today_att %}
       Today's status: <b>{{ today_att.status }}</b>
-      {% if today_att.punch_in_at %} · IN at <b>{{ today_att.punch_in_at.strftime('%H:%M:%S') }}</b>{% endif %}
-      {% if today_att.punch_out_at %} · OUT at <b>{{ today_att.punch_out_at.strftime('%H:%M:%S') }}</b>{% endif %}
+      {% if today_att.punch_in_at %} · IN at <b>{{ today_att.punch_in_at | ist_time }}</b>{% endif %}
+      {% if today_att.punch_out_at %} · OUT at <b>{{ today_att.punch_out_at | ist_time }}</b>{% endif %}
       {% if today_att.punch_in_at and today_att.punch_out_at %} · {{ today_att.hours }} hrs{% endif %}
     {% else %}
       You haven't been punched today.
@@ -66,8 +66,8 @@
       {% for a in recent %}
       <tr>
         <td>{{ a.work_date.strftime('%a · %d-%b-%Y') }}</td>
-        <td>{{ a.punch_in_at.strftime('%H:%M:%S') if a.punch_in_at else (a.captured_at.strftime('%H:%M:%S') if a.captured_at else '—') }}</td>
-        <td>{{ a.punch_out_at.strftime('%H:%M:%S') if a.punch_out_at else '—' }}</td>
+        <td>{{ (a.punch_in_at | ist_time) or (a.captured_at | ist_time) or '—' }}</td>
+        <td>{{ (a.punch_out_at | ist_time) or '—' }}</td>
         <td>{{ a.hours or '—' }}</td>
         <td>{{ a.status }}</td>
         <td>
