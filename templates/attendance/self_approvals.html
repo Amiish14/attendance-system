@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}My team — self attendance approvals{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Team Self Attendance</h1>
+<p style="color:#666; font-size:13.5px; max-width:900px;">
+  Self-attendance punches from your direct reports. Approve them here — HR then gives the
+  final sign-off before the day counts.
+</p>
+
+<form method="post">
+  <div class="pc-card">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <h3 style="margin:0;">Pending your approval ({{ pending|length }})</h3>
+      <div style="margin-left:auto; display:flex; gap:6px;">
+        <button type="button" onclick="selectAll(true)" class="pc-btn pc-btn-ghost">Select all</button>
+        <button type="submit" name="action" value="approve" class="pc-btn pc-btn-success">✓ Approve</button>
+        <button type="submit" name="action" value="decline" class="pc-btn pc-btn-primary"
+                onclick="return confirm('Decline these punches?')">✗ Decline</button>
+      </div>
+    </div>
+    <table class="pc-table" style="margin-top:12px;">
+      <thead><tr>
+        <th style="width:30px;"><input type="checkbox" onchange="selectAll(this.checked)" id="select-all-box"></th>
+        <th>Code</th><th>Employee</th><th>Date</th><th>IN</th><th>OUT</th>
+        <th>Face</th><th>GPS</th><th>Office</th><th>Dist.</th>
+      </tr></thead>
+      <tbody>
+        {% for a in pending %}{% set w = a.worker %}
+        <tr>
+          <td><input type="checkbox" name="att_id" value="{{ a.id }}" class="row-cb"></td>
+          <td><b>{{ w.code }}</b></td>
+          <td>{{ w.full_name }}</td>
+          <td>{{ a.work_date.strftime('%d-%b') }}</td>
+          <td>{{ (a.punch_in_at | ist_time) or '—' }}</td>
+          <td>{{ (a.punch_out_at | ist_time) or '—' }}</td>
+          <td>{% if a.face_verified %}<span class="pc-badge active">✓</span>{% elif a.face_verified is none %}—{% else %}<span class="pc-badge closed">✗</span>{% endif %}</td>
+          <td>{% if a.gps_verified %}<span class="pc-badge active">✓</span>{% elif a.outside_geofence %}<span class="pc-badge closed">Outside</span>{% else %}—{% endif %}</td>
+          <td>{{ a.location_name or '—' }}</td>
+          <td>{{ (a.distance_m|round(0)|int ~ ' m') if a.distance_m is not none else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10" style="text-align:center; color:#888; padding:18px;">Nothing pending. 🎉</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<div class="pc-card">
+  <h3>Recently decided</h3>
+  <table class="pc-table">
+    <thead><tr><th>Code</th><th>Employee</th><th>Date</th><th>IN</th><th>OUT</th><th>Your decision</th></tr></thead>
+    <tbody>
+      {% for a in decided %}{% set w = a.worker %}{% set mgr = a.approval('Manager') %}
+      <tr>
+        <td>{{ w.code }}</td><td>{{ w.full_name }}</td>
+        <td>{{ a.work_date.strftime('%d-%b') }}</td>
+        <td>{{ (a.punch_in_at | ist_time) or '—' }}</td>
+        <td>{{ (a.punch_out_at | ist_time) or '—' }}</td>
+        <td><span class="pc-badge {{ 'active' if mgr and mgr.status=='Approved' else 'rejected' }}">{{ mgr.status if mgr else '—' }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center; color:#888;">Nothing decided yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function selectAll(on) {
+  document.querySelectorAll('.row-cb').forEach(cb => cb.checked = on);
+  document.getElementById('select-all-box').checked = on;
+}
+</script>
+{% endblock %}

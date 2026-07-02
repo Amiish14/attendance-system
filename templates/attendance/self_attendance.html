@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% block title %}Mark Attendance{% endblock %}
+{% block head_extra %}
+<style>
+  /* Mode 2 — Self Attendance. Mobile-first; works on phones and desktop. */
+  .sa-wrap { max-width: 760px; margin: 0 auto; }
+  .sa-status-card {
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  .sa-dot { width:14px; height:14px; border-radius:50%; background:#c33; flex:0 0 auto; }
+  .sa-dot.ok { background:#1a7f37; }
+  .sa-grid { display:grid; grid-template-columns: 1fr; gap:18px; }
+  .sa-cam-box { position:relative; }
+  .sa-cam-box video {
+    width:100%; max-height:52vh; border-radius:10px; background:#000; object-fit:cover;
+  }
+  .sa-result {
+    display:none; text-align:center; padding:26px 18px; border-radius:12px;
+    background:#f2fbf4; border:1px solid #bfe6c8;
+  }
+  .sa-result.show { display:block; }
+  .sa-result.fail { background:#fdf2f3; border-color:#eab8bf; }
+  .sa-result h2 { margin:0 0 4px; font-size:22px; color:#1a7f37; }
+  .sa-result.fail h2 { color:#b00020; }
+  .sa-result .sa-time { font-size:30px; font-weight:800; letter-spacing:.5px; margin:2px 0 12px; }
+  .sa-checks { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:8px; }
+  .sa-check { display:flex; align-items:center; gap:7px; font-size:14px; font-weight:600;
+              background:#fff; border:1px solid #d9e6dd; border-radius:999px; padding:7px 14px; }
+  .sa-check .ic { font-size:15px; }
+  .sa-check.no { border-color:#eab8bf; color:#b00020; }
+  .sa-check.yes { color:#1a7f37; }
+  .sa-big-btn { width:100%; padding:16px; font-size:17px; font-weight:700; }
+  .sa-btn-row { display:flex; gap:10px; }
+  .sa-btn-row .pc-btn { flex:1; }
+  .sa-hint { font-size:12.5px; color:#888; }
+  @media (min-width:640px) {
+    .sa-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sa-wrap">
+<h1 class="pc-page-h1">Mark Attendance <span class="pill">{{ worker.code }}</span></h1>
+
+{# ---- Today's Attendance status card ---- #}
+<div class="pc-card">
+  <div class="sa-status-card">
+    <span class="sa-dot {{ 'ok' if today_att and today_att.punch_in_at else '' }}"></span>
+    <div>
+      <div style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px;">Today's Attendance</div>
+      <div style="font-size:17px; font-weight:700;">
+        {% if today_att and today_att.punch_in_at %}
+          Marked · IN {{ today_att.punch_in_at | ist_time }}
+          {% if today_att.punch_out_at %} · OUT {{ today_att.punch_out_at | ist_time }}{% endif %}
+        {% else %}
+          Not Marked
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if settings.enable_face_verification and not has_face %}
+  <div class="pc-card" style="border-left:4px solid var(--pc-warning, #d39e00); background:#fff8e6;">
+    <strong>Enrol your face first.</strong>
+    <p style="margin:8px 0; font-size:13px; color:#555;">
+      Self attendance verifies your identity against your enrolled face. This takes about a minute.
+    </p>
+    <a class="pc-btn pc-btn-primary" href="{{ url_for('attendance.enroll_face') }}">Enrol my face now</a>
+  </div>
+{% else %}
+
+{# ---- Capture stage ---- #}
+<div class="pc-card" id="sa-stage">
+  <div class="sa-grid">
+    {% if settings.enable_face_verification or settings.capture_photo %}
+    <div class="sa-cam-box">
+      <video id="pc-cam" autoplay playsinline muted></video>
+      <canvas id="pc-snap" style="display:none;"></canvas>
+      <input type="hidden" id="pc-descriptor">
+      <div id="pc-face-status" style="margin-top:8px; padding:8px 10px; background:#f5f5f5; border-radius:6px; font-size:12.5px; color:#555;">starting camera…</div>
+    </div>
+    {% endif %}
+
+    <div>
+      <div id="sa-step" style="font-size:14px; color:#444; margin-bottom:12px; line-height:1.6;">
+        Tap the button below to mark your attendance. We’ll verify your
+        {% if settings.enable_face_verification %}face{% endif %}{% if settings.enable_face_verification and settings.enable_gps %} and {% endif %}{% if settings.enable_gps %}location{% endif %}.
+      </div>
+      <div class="sa-btn-row">
+        {% set has_in = today_att and today_att.punch_in_at %}
+        <button class="pc-btn pc-btn-primary sa-big-btn" id="sa-mark-in"
+                data-kind="in" {% if has_in %}style="display:none;"{% endif %}>
+          Mark Attendance
+        </button>
+        <button class="pc-btn pc-btn-success sa-big-btn" id="sa-mark-out"
+                data-kind="out" {% if not has_in or (today_att and today_att.punch_out_at) %}style="display:none;"{% endif %}>
+          Mark OUT
+        </button>
+      </div>
+      <p class="sa-hint" style="margin-top:10px;">
+        📍 Live camera only — photo upload and gallery selection are not permitted.
+        Your device location is captured to confirm you’re at the office.
+      </p>
+    </div>
+  </div>
+</div>
+
+{# ---- Result panel ---- #}
+<div class="pc-card sa-result" id="sa-result">
+  <h2 id="sa-result-title">Attendance Marked</h2>
+  <div class="sa-time" id="sa-result-time">—</div>
+  <div class="sa-checks" id="sa-result-checks"></div>
+  <div id="sa-result-msg" style="margin-top:14px; font-size:13.5px; color:#555;"></div>
+  <button class="pc-btn pc-btn-ghost" style="margin-top:16px;" onclick="location.reload()">Done</button>
+</div>
+{% endif %}
+
+{# ---- Attendance history ---- #}
+<div class="pc-card">
+  <h3 style="margin-top:0;">My attendance history</h3>
+  <table class="pc-table">
+    <thead><tr><th>Date</th><th>Check In</th><th>Check Out</th><th>Type</th><th>Location</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for a in recent %}
+      <tr>
+        <td>{{ a.work_date.strftime('%a · %d-%b-%Y') }}</td>
+        <td>{{ (a.punch_in_at | ist_time) or (a.captured_at | ist_time) or '—' }}</td>
+        <td>{{ (a.punch_out_at | ist_time) or '—' }}</td>
+        <td>{{ a.attendance_type or 'Kiosk' }}</td>
+        <td>{{ a.location_name or '—' }}</td>
+        <td>
+          {% if a.is_dual_approved %}<span class="pc-badge approved">✓ Approved</span>
+          {% else %}<span class="pc-badge pending">Pending</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center; color:#888;">No attendance yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>{# /sa-wrap #}
+
+{% if (settings.enable_face_verification or settings.capture_photo) %}
+<script src="{{ url_for('static', filename='js/face.js') }}"></script>
+{% endif %}
+<script>
+(function () {
+  const CFG = {
+    face: {{ 'true' if settings.enable_face_verification else 'false' }},
+    photo: {{ 'true' if settings.capture_photo else 'false' }},
+    gps:  {{ 'true' if settings.enable_gps else 'false' }},
+    maxAcc: {{ settings.max_gps_accuracy_m or 0 }}
+  };
+  const MARK_URL = "{{ url_for('self_att.mark') }}";
+
+  function step(msg) { const e = document.getElementById('sa-step'); if (e) e.innerHTML = msg; }
+  function faceStatus(msg) { const e = document.getElementById('pc-face-status'); if (e) e.textContent = msg; }
+
+  // Grab the live JPEG that face.js drew into #pc-snap during capture.
+  function snapshotDataUrl() {
+    const c = document.getElementById('pc-snap');
+    if (!c || !c.width) return null;
+    try { return c.toDataURL('image/jpeg', 0.72); } catch (e) { return null; }
+  }
+
+  // Promise wrapper around the browser geolocation API. Never rejects — resolves
+  // an object describing success OR the failure reason so the server can decide.
+  function getGeo() {
+    return new Promise((resolve) => {
+      if (!CFG.gps) return resolve({ skip: true });
+      if (!('geolocation' in navigator)) return resolve({ gps_error: 'unavailable' });
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        }),
+        (err) => resolve({ gps_error: err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable' }),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  }
+
+  function showResult(ok, data) {
+    document.getElementById('sa-stage').style.display = 'none';
+    const box = document.getElementById('sa-result');
+    box.classList.add('show');
+    if (!ok) box.classList.add('fail');
+    document.getElementById('sa-result-title').textContent =
+      ok ? (data.is_late ? 'Attendance Marked (Late)' : 'Attendance Marked') : 'Not Recorded';
+    document.getElementById('sa-result-time').textContent = ok ? (data.time || '') : '';
+    const checks = document.getElementById('sa-result-checks');
+    checks.innerHTML = '';
+    if (ok) {
+      if (data.face_verified !== null && data.face_verified !== undefined) {
+        checks.innerHTML += chip(data.face_verified, 'Face Verified', 'Face Not Verified');
+      }
+      if (data.gps_verified !== null && data.gps_verified !== undefined) {
+        const label = data.outside_geofence ? 'Outside Office (flagged)' : 'Location Verified';
+        checks.innerHTML += chip(data.gps_verified && !data.outside_geofence, label, label);
+      }
+    }
+    document.getElementById('sa-result-msg').textContent = data.message || '';
+  }
+  function chip(yes, okText, noText) {
+    return '<span class="sa-check ' + (yes ? 'yes' : 'no') + '">' +
+           '<span class="ic">' + (yes ? '✓' : '⚠') + '</span>' +
+           (yes ? okText : noText) + '</span>';
+  }
+
+  async function mark(kind, btn) {
+    btn.disabled = true;
+    const body = { kind: kind };
+
+    // 1) Face — live capture only (face.js has no upload path).
+    if (CFG.face) {
+      step('Verifying your face…');
+      const desc = (window.PCFace ? await PCFace.capture() : null);
+      if (!desc || desc.length !== 128) {
+        step('❌ ' + (document.getElementById('pc-face-status').textContent || 'Face not captured') +
+             '<br>Please try again.');
+        btn.disabled = false;
+        return;
+      }
+      body.descriptor = desc;
+    }
+    // Attach the live JPEG if photo capture is on.
+    if (CFG.photo) {
+      const snap = snapshotDataUrl();
+      if (snap) body.snapshot = snap;
+    }
+
+    // 2) GPS
+    if (CFG.gps) {
+      step('Getting your location…');
+      const geo = await getGeo();
+      Object.assign(body, geo);
+    }
+
+    // 3) Submit — server re-validates everything (can't be bypassed by dev-tools).
+    step('Recording attendance…');
+    try {
+      const res = await fetch(MARK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      showResult(res.ok && data.ok, data);
+    } catch (e) {
+      step('❌ Network error. Please try again.');
+      btn.disabled = false;
+    }
+  }
+
+  document.querySelectorAll('#sa-mark-in, #sa-mark-out').forEach((btn) => {
+    btn.addEventListener('click', () => mark(btn.dataset.kind, btn));
+  });
+})();
+</script>
+{% endblock %}

@@ -258,6 +258,25 @@ ATT_HALF = "HalfDay"
 ATT_HOLIDAY = "Holiday"
 ATT_REGULARIZED = "Regularized"
 
+# ---------------------------------------------------------------------------
+# Attendance capture mode. Mode 1 (Kiosk) is the original gate flow and must
+# stay the default so every legacy row and every future kiosk punch is tagged
+# 'Kiosk' automatically. Mode 2 (Self) is the employee self-attendance feature.
+# 'AdminManual' is reserved for a future admin-entered attendance mode.
+# ---------------------------------------------------------------------------
+ATT_TYPE_KIOSK = "Kiosk"
+ATT_TYPE_SELF = "Self"
+ATT_TYPE_ADMIN = "AdminManual"
+ATTENDANCE_TYPES = (ATT_TYPE_KIOSK, ATT_TYPE_SELF, ATT_TYPE_ADMIN)
+
+# Approval "sides". The original dual/hr flows use Vendor + Client. Employee
+# self-attendance (Mode 2) is signed off by the employee's line Manager and
+# then by HR — two extra side values on the same AttendanceApproval table.
+SIDE_VENDOR = "Vendor"
+SIDE_CLIENT = "Client"
+SIDE_MANAGER = "Manager"
+SIDE_HR = "HR"
+
 
 class Attendance(db.Model):
     __tablename__ = "attendance"
@@ -274,6 +293,27 @@ class Attendance(db.Model):
     # When OUT is set, total_hours can later be computed from the gap.
     punch_in_at = db.Column(db.DateTime)
     punch_out_at = db.Column(db.DateTime)
+
+    # -------------------------------------------------------------------
+    # Mode 2 (Employee Self Attendance) fields.
+    # All are nullable so existing kiosk rows remain valid untouched.
+    # `attendance_type` defaults to 'Kiosk' so every legacy row and every
+    # future kiosk punch is correctly classified without changing kiosk code.
+    # -------------------------------------------------------------------
+    attendance_type = db.Column(db.String(20), default=ATT_TYPE_KIOSK,
+                                nullable=False, index=True)
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    gps_accuracy = db.Column(db.Float)          # metres reported by the browser
+    location_name = db.Column(db.String(120))   # matched office name, if any
+    distance_m = db.Column(db.Float)            # distance from the matched office
+    face_verified = db.Column(db.Boolean)       # True once face passed threshold
+    gps_verified = db.Column(db.Boolean)        # True once inside geofence
+    outside_geofence = db.Column(db.Boolean, default=False)  # flagged, allowed by admin
+    device = db.Column(db.String(160))          # parsed platform, e.g. "Android"
+    browser = db.Column(db.String(160))         # parsed browser, e.g. "Chrome Mobile"
+    ip_address = db.Column(db.String(64))
+    self_photo_b64 = db.Column(db.Text)         # live JPEG captured at self-punch
 
     worker = db.relationship("Worker")
     project = db.relationship("Project")
@@ -297,7 +337,19 @@ class Attendance(db.Model):
             - none    : punch IS the record — auto-approved on creation
             - hr_only : only the HR/Client side must be Approved
             - dual    : both Vendor and Client sides must be Approved
-           Backwards-compatible: still called is_dual_approved everywhere."""
+           Backwards-compatible: still called is_dual_approved everywhere.
+
+           Employee Self Attendance (Mode 2) uses its own two-step chain that
+           is independent of the agency mode: the employee's line Manager
+           approves first, then HR gives the final sign-off. When an employee
+           has no manager on file, only the HR approval is required."""
+        # Mode 2 — self attendance: Manager (if any) + HR.
+        if self.attendance_type == ATT_TYPE_SELF:
+            mgr = self.approval(SIDE_MANAGER)
+            hr = self.approval(SIDE_HR)
+            mgr_ok = (mgr is None) or (mgr.status == "Approved")
+            return bool(hr and hr.status == "Approved" and mgr_ok)
+
         mode = (self.worker.agency.approver_mode if self.worker and self.worker.agency
                 else APPROVER_NONE)
         if mode == APPROVER_NONE:
@@ -392,3 +444,86 @@ class InvoiceLine(db.Model):
     line_amount = db.Column(db.Numeric(14, 2), default=Decimal("0.00"))
 
     worker = db.relationship("Worker")
+
+
+# ---------------------------------------------------------------------------
+# Mode 2 — Employee Self Attendance: offices, geofence assignment & settings.
+# These are all NEW tables (created by db.create_all) — nothing existing is
+# altered, so kiosk attendance is entirely unaffected.
+# ---------------------------------------------------------------------------
+
+# Many-to-many: an employee can be assigned to one OR more offices. Geofence
+# validation runs against the employee's assigned offices (nearest wins). If an
+# employee has no office assigned, validation falls back to ALL active offices.
+worker_offices = db.Table(
+    "worker_offices",
+    db.Column("worker_id", db.Integer, db.ForeignKey("workers.id"),
+              primary_key=True),
+    db.Column("office_id", db.Integer, db.ForeignKey("offices.id"),
+              primary_key=True),
+)
+
+
+class Office(db.Model):
+    """A physical office/site with a geofence (centre + allowed radius)."""
+    __tablename__ = "offices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(32), unique=True, nullable=False)
+    name = db.Column(db.String(160), nullable=False)
+    city = db.Column(db.String(80))
+    address = db.Column(db.Text)
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    radius_m = db.Column(db.Integer, default=100, nullable=False)  # allowed radius
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # backref `.offices` is added onto Worker from this side.
+    workers = db.relationship("Worker", secondary=worker_offices,
+                              backref="offices")
+
+    @property
+    def is_geofence_ready(self) -> bool:
+        return (self.latitude is not None and self.longitude is not None
+                and self.radius_m and self.radius_m > 0)
+
+
+class SelfAttendanceSettings(db.Model):
+    """Singleton (id=1) holding every admin-configurable option for Mode 2.
+       Read via `SelfAttendanceSettings.get()` which lazily creates the row
+       with sane defaults so the feature works out of the box."""
+    __tablename__ = "self_attendance_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    enable_self_attendance = db.Column(db.Boolean, default=True, nullable=False)
+    enable_face_verification = db.Column(db.Boolean, default=True, nullable=False)
+    enable_gps = db.Column(db.Boolean, default=True, nullable=False)
+    enable_geofence = db.Column(db.Boolean, default=True, nullable=False)
+    allow_outside_radius = db.Column(db.Boolean, default=False, nullable=False)
+    require_live_camera = db.Column(db.Boolean, default=True, nullable=False)
+    capture_photo = db.Column(db.Boolean, default=True, nullable=False)
+    # Reject GPS fixes whose reported accuracy is worse (larger) than this.
+    max_gps_accuracy_m = db.Column(db.Integer, default=50, nullable=False)
+    # Attendance time window (IST, "HH:MM"). Blank = no restriction.
+    window_start = db.Column(db.String(5))   # e.g. "08:00"
+    window_end = db.Column(db.String(5))     # e.g. "20:00"
+    # Any IN punch after this clock time (IST, "HH:MM") is flagged Late.
+    late_mark_after = db.Column(db.String(5))  # e.g. "09:30"
+    # Anti-abuse: minimum seconds between two self punches by the same employee.
+    cooldown_seconds = db.Column(db.Integer, default=60, nullable=False)
+    # Fallback / default geofence used when NO office rows exist yet. Also used
+    # to pre-fill the "new office" form. Offices table is authoritative.
+    default_office_latitude = db.Column(db.Float)
+    default_office_longitude = db.Column(db.Float)
+    default_office_radius_m = db.Column(db.Integer, default=100)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow,
+                           onupdate=datetime.utcnow)
+
+    @classmethod
+    def get(cls) -> "SelfAttendanceSettings":
+        s = cls.query.get(1)
+        if not s:
+            s = cls(id=1)
+            db.session.add(s)
+            db.session.commit()
+        return s

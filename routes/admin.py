@@ -9,10 +9,12 @@ from flask_login import login_required, current_user
 
 from models import (
     db, User, Agency, Project, Skill, RateCard, Worker,
-    Attendance, Invoice, ROLE_ADMIN, ROLE_PROCAM_REP, ROLE_VENDOR_REP, ROLE_WORKER,
+    Attendance, AttendanceApproval, Invoice,
+    ROLE_ADMIN, ROLE_PROCAM_REP, ROLE_VENDOR_REP, ROLE_WORKER,
     APPROVER_DUAL, APPROVER_NONE, CAT_SKILLED,
+    Office, SelfAttendanceSettings, ATT_TYPE_SELF, SIDE_MANAGER, SIDE_HR,
 )
-from utils import role_required, parse_date, to_ist
+from utils import role_required, parse_date, to_ist, worker_can_self_attend
 
 bp = Blueprint("admin", __name__)
 
@@ -482,16 +484,23 @@ def attendance_daily_xlsx():
     red = PatternFill("solid", fgColor="BC1D2F")
     white_bold = Font(bold=True, color="FFFFFF")
 
-    # Title banner
+    # Headers — Mode 2 adds Type + the self-attendance audit columns. Kiosk
+    # rows simply leave the self columns blank, so the sheet works for both.
+    headers = ["Code", "Worker", "Department / Vertical", "Designation", "Category",
+               "Type", "IN", "OUT", "Hours",
+               "Approval 1", "Approval 2", "Overall",
+               "Face", "GPS", "Office", "Distance (m)", "Accuracy (m)",
+               "Device", "Browser", "IP Address", "Map Link"]
+    ncols = len(headers)
+
+    # Title banner spans all columns.
     title = f"PROCAM — Daily Attendance · {d.strftime('%A, %d %B %Y')}"
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=11)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
     ws.cell(row=1, column=1, value=title).font = Font(bold=True, color="FFFFFF", size=13)
     ws.cell(row=1, column=1).fill = red
     ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
     ws.row_dimensions[1].height = 26
 
-    headers = ["Code", "Worker", "Department / Vertical", "Designation", "Category",
-               "IN", "OUT", "Hours", "Vendor Approval", "Procam Approval", "Overall"]
     for i, h in enumerate(headers, 1):
         c = ws.cell(row=2, column=i, value=h)
         c.font = white_bold; c.fill = red
@@ -502,40 +511,69 @@ def attendance_daily_xlsx():
         ist = to_ist(dt)
         return ist.strftime("%H:%M:%S") if ist else ""
 
+    def _yn(v):
+        return "" if v is None else ("Yes" if v else "No")
+
     for i, a in enumerate(rows, start=3):
         w = a.worker
-        v = a.approval("Vendor"); cap = a.approval("Client")
-        vs = v.status if v else "—"
-        cs = cap.status if cap else "—"
-        overall = "Approved" if (vs == "Approved" and cs == "Approved") else \
-                  "Declined" if "Declined" in (vs, cs) else "Pending"
-        ws.cell(row=i, column=1, value=w.code if w else "")
-        ws.cell(row=i, column=2, value=w.full_name if w else "")
-        ws.cell(row=i, column=3, value=(w.agency.name if w and w.agency else ""))
-        ws.cell(row=i, column=4, value=(w.skill.name if w and w.skill else ""))
-        ws.cell(row=i, column=5, value=(w.category if w else ""))
-        ws.cell(row=i, column=6, value=_fmt_t(a.punch_in_at) or _fmt_t(a.captured_at))
-        ws.cell(row=i, column=7, value=_fmt_t(a.punch_out_at))
-        ws.cell(row=i, column=8, value=float(a.hours or 0))
-        ws.cell(row=i, column=9, value=vs)
-        ws.cell(row=i, column=10, value=cs)
-        ws.cell(row=i, column=11, value=overall)
+        is_self = (a.attendance_type == ATT_TYPE_SELF)
+        if is_self:
+            a1 = a.approval(SIDE_MANAGER); a2 = a.approval(SIDE_HR)
+            vs = a1.status if a1 else "—"
+            cs = a2.status if a2 else "—"
+        else:
+            v = a.approval("Vendor"); cap = a.approval("Client")
+            vs = v.status if v else "—"
+            cs = cap.status if cap else "—"
+        overall = "Approved" if a.is_dual_approved else \
+                  ("Declined" if "Declined" in (vs, cs) else "Pending")
+        gps_txt = ("Outside" if a.outside_geofence else
+                   ("" if a.gps_verified is None else ("Yes" if a.gps_verified else "No")))
+        maplink = (f"https://www.google.com/maps?q={a.latitude},{a.longitude}"
+                   if (a.latitude is not None and a.longitude is not None) else "")
+        vals = [
+            w.code if w else "",
+            w.full_name if w else "",
+            (w.agency.name if w and w.agency else ""),
+            (w.skill.name if w and w.skill else ""),
+            (w.category if w else ""),
+            a.attendance_type or "Kiosk",
+            _fmt_t(a.punch_in_at) or _fmt_t(a.captured_at),
+            _fmt_t(a.punch_out_at),
+            float(a.hours or 0),
+            vs, cs, overall,
+            _yn(a.face_verified) if is_self else "",
+            gps_txt if is_self else "",
+            a.location_name or "" if is_self else "",
+            (round(a.distance_m, 1) if a.distance_m is not None else "") if is_self else "",
+            (round(a.gps_accuracy, 1) if a.gps_accuracy is not None else "") if is_self else "",
+            a.device or "" if is_self else "",
+            a.browser or "" if is_self else "",
+            a.ip_address or "" if is_self else "",
+            maplink if is_self else "",
+        ]
+        for col, val in enumerate(vals, start=1):
+            ws.cell(row=i, column=col, value=val)
 
     # Footer summary
     sr = len(rows) + 4
     ws.cell(row=sr, column=1, value="Summary").font = Font(bold=True)
     n_present = sum(1 for a in rows if a.status == "Present")
     n_appr = sum(1 for a in rows if a.is_dual_approved)
+    n_self = sum(1 for a in rows if a.attendance_type == ATT_TYPE_SELF)
     ws.cell(row=sr + 1, column=1, value="Rows total").font = Font(bold=True)
     ws.cell(row=sr + 1, column=2, value=len(rows))
     ws.cell(row=sr + 2, column=1, value="Present").font = Font(bold=True)
     ws.cell(row=sr + 2, column=2, value=n_present)
     ws.cell(row=sr + 3, column=1, value="Fully approved (billable)").font = Font(bold=True)
     ws.cell(row=sr + 3, column=2, value=n_appr)
+    ws.cell(row=sr + 4, column=1, value="Self-attendance rows").font = Font(bold=True)
+    ws.cell(row=sr + 4, column=2, value=n_self)
 
-    widths = [12, 28, 22, 22, 14, 11, 11, 8, 14, 14, 12]
-    for i, w in enumerate(widths, start=1):
-        ws.column_dimensions[get_column_letter(i)].width = w
+    widths = [12, 26, 20, 18, 12, 9, 10, 10, 7, 12, 12, 11,
+              7, 9, 16, 12, 12, 14, 16, 15, 30]
+    for i, wd in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = wd
 
     buf = _io.BytesIO(); wb.save(buf); buf.seek(0)
     fn = f"Procam_Attendance_{d.strftime('%Y-%m-%d')}.xlsx"
@@ -805,3 +843,181 @@ def import_employees():
     finally:
         try: os.unlink(tmp_path)
         except OSError: pass
+
+
+# ===========================================================================
+# Employee Self Attendance (Mode 2) — admin configuration
+# ===========================================================================
+def _chk(f, name: str) -> bool:
+    """Checkbox helper — HTML checkboxes only POST when ticked."""
+    return f.get(name) in ("on", "1", "true", "yes")
+
+
+def _int_or(f, name: str, default):
+    try:
+        v = (f.get(name) or "").strip()
+        return int(v) if v != "" else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _float_or_none(f, name: str):
+    v = (f.get(name) or "").strip()
+    if v == "":
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        return None
+
+
+@bp.route("/self-attendance/settings", methods=["GET", "POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def self_attendance_settings():
+    """The 'Self Attendance Settings' admin panel."""
+    s = SelfAttendanceSettings.get()
+    if request.method == "POST":
+        f = request.form
+        s.enable_self_attendance   = _chk(f, "enable_self_attendance")
+        s.enable_face_verification = _chk(f, "enable_face_verification")
+        s.enable_gps               = _chk(f, "enable_gps")
+        s.enable_geofence          = _chk(f, "enable_geofence")
+        s.allow_outside_radius     = _chk(f, "allow_outside_radius")
+        s.require_live_camera      = _chk(f, "require_live_camera")
+        s.capture_photo            = _chk(f, "capture_photo")
+        s.max_gps_accuracy_m       = _int_or(f, "max_gps_accuracy_m", 50)
+        s.cooldown_seconds         = _int_or(f, "cooldown_seconds", 60)
+        s.window_start             = (f.get("window_start") or "").strip() or None
+        s.window_end               = (f.get("window_end") or "").strip() or None
+        s.late_mark_after          = (f.get("late_mark_after") or "").strip() or None
+        s.default_office_latitude  = _float_or_none(f, "default_office_latitude")
+        s.default_office_longitude = _float_or_none(f, "default_office_longitude")
+        s.default_office_radius_m  = _int_or(f, "default_office_radius_m", 100)
+        db.session.commit()
+        flash("Self attendance settings saved.", "success")
+        return redirect(url_for("admin.self_attendance_settings"))
+    offices = Office.query.order_by(Office.name).all()
+    return render_template("admin/self_attendance_settings.html",
+                           s=s, offices=offices)
+
+
+# --------------------------- Offices CRUD ----------------------------------
+@bp.route("/offices")
+@login_required
+@role_required(ROLE_ADMIN)
+def offices():
+    rows = Office.query.order_by(Office.name).all()
+    return render_template("admin/offices.html", rows=rows)
+
+
+@bp.route("/offices/new", methods=["GET", "POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def office_new():
+    s = SelfAttendanceSettings.get()
+    if request.method == "POST":
+        f = request.form
+        o = Office(
+            code=(f.get("code") or "").strip().upper(),
+            name=(f.get("name") or "").strip(),
+            city=(f.get("city") or "").strip() or None,
+            address=(f.get("address") or "").strip() or None,
+            latitude=_float_or_none(f, "latitude"),
+            longitude=_float_or_none(f, "longitude"),
+            radius_m=_int_or(f, "radius_m", s.default_office_radius_m or 100),
+            is_active=_chk(f, "is_active"),
+        )
+        db.session.add(o)
+        db.session.commit()
+        flash(f"Office '{o.name}' added.", "success")
+        return redirect(url_for("admin.offices"))
+    return render_template("admin/office_form.html", o=None, s=s,
+                           eligible_workers=[])
+
+
+@bp.route("/offices/<int:oid>/edit", methods=["GET", "POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def office_edit(oid):
+    o = Office.query.get_or_404(oid)
+    s = SelfAttendanceSettings.get()
+    if request.method == "POST":
+        f = request.form
+        o.code = (f.get("code") or "").strip().upper()
+        o.name = (f.get("name") or "").strip()
+        o.city = (f.get("city") or "").strip() or None
+        o.address = (f.get("address") or "").strip() or None
+        o.latitude = _float_or_none(f, "latitude")
+        o.longitude = _float_or_none(f, "longitude")
+        o.radius_m = _int_or(f, "radius_m", 100)
+        o.is_active = _chk(f, "is_active")
+        # Update the employee <-> office assignment from the multi-select.
+        chosen_ids = set(request.form.getlist("worker_ids", type=int))
+        o.workers = Worker.query.filter(Worker.id.in_(chosen_ids)).all() \
+            if chosen_ids else []
+        db.session.commit()
+        flash(f"Office '{o.name}' updated.", "success")
+        return redirect(url_for("admin.offices"))
+    # Only office staff (in-house PROCAM agency) can be geofence-assigned.
+    in_house = [a.id for a in Agency.query.filter_by(approver_mode=APPROVER_NONE).all()]
+    eligible_workers = (Worker.query
+                        .filter(Worker.is_active.is_(True),
+                                Worker.agency_id.in_(in_house))
+                        .order_by(Worker.full_name).all()) if in_house else []
+    assigned_ids = {w.id for w in o.workers}
+    return render_template("admin/office_form.html", o=o, s=s,
+                           eligible_workers=eligible_workers,
+                           assigned_ids=assigned_ids)
+
+
+# ------------------- HR final approval of self attendance ------------------
+@bp.route("/self-attendance/approvals", methods=["GET", "POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def self_attendance_approvals():
+    """HR gives the FINAL sign-off on employee self attendance. A punch appears
+       here once its Manager step is Approved (or when the employee has no
+       manager on file, so there is no Manager step)."""
+    d = parse_date(request.args.get("date")) or date.today()
+
+    if request.method == "POST":
+        from datetime import datetime as _dt
+        action = request.form.get("action")
+        att_ids = request.form.getlist("att_id", type=int)
+        new_status = "Approved" if action == "approve" else \
+                     "Declined" if action == "decline" else None
+        if new_status and att_ids:
+            for aid in att_ids:
+                att = Attendance.query.get(aid)
+                if not att or att.attendance_type != ATT_TYPE_SELF:
+                    continue
+                ap = att.approval(SIDE_HR)
+                if not ap:
+                    ap = AttendanceApproval(attendance_id=att.id, side=SIDE_HR)
+                    db.session.add(ap)
+                ap.status = new_status
+                ap.decided_by_id = current_user.id
+                ap.decided_at = _dt.utcnow()
+            db.session.commit()
+            flash(f"{len(att_ids)} self punch(es) {new_status.lower()} by HR.", "success")
+        return redirect(url_for("admin.self_attendance_approvals", date=d.isoformat()))
+
+    rows = (Attendance.query
+            .join(Worker, Worker.id == Attendance.worker_id)
+            .filter(Attendance.attendance_type == ATT_TYPE_SELF,
+                    Attendance.work_date == d)
+            .order_by(Worker.code).all())
+    pending, decided = [], []
+    for a in rows:
+        mgr = a.approval(SIDE_MANAGER)
+        hr = a.approval(SIDE_HR)
+        manager_ok = (mgr is None) or (mgr.status == "Approved")
+        hr_done = hr and hr.status in ("Approved", "Declined")
+        # Ready for HR only once the manager step is cleared and HR hasn't decided.
+        if manager_ok and not hr_done:
+            pending.append(a)
+        elif hr_done:
+            decided.append(a)
+    return render_template("admin/self_attendance_approvals.html",
+                           pending=pending, decided=decided, the_date=d)

@@ -68,6 +68,7 @@ def create_app(config_class=Config):
     from routes.api import bp as api_bp
     from routes.kiosk import bp as kiosk_bp
     from routes.payroll import bp as payroll_bp
+    from routes.self_attendance import bp as self_att_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -78,6 +79,24 @@ def create_app(config_class=Config):
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(kiosk_bp)
     app.register_blueprint(payroll_bp)  # /payroll, /payroll/worker/<id>, /payroll/export.xlsx
+    app.register_blueprint(self_att_bp, url_prefix="/self")  # Mode 2 — Employee Self Attendance
+
+    # Expose the self-attendance settings + per-user eligibility to every
+    # template so the nav/cards can show or hide the "Mark Attendance" entry.
+    from utils import worker_can_self_attend
+
+    @app.context_processor
+    def _inject_self_attendance():
+        from models import SelfAttendanceSettings
+        try:
+            settings = SelfAttendanceSettings.query.get(1)
+        except Exception:
+            settings = None
+        eligible = False
+        if settings and current_user.is_authenticated:
+            eligible = worker_can_self_attend(
+                getattr(current_user, "worker", None), settings)
+        return {"self_att_settings": settings, "can_self_attend": eligible}
 
     @app.route("/")
     def index():
@@ -112,6 +131,7 @@ def create_app(config_class=Config):
         db.create_all()
         _patch_schema()
         _ensure_admin()
+        _seed_self_attendance()
 
     # One-shot recovery endpoints — only live when SETUP_TOKEN env var is set
     _register_setup_routes(app)
@@ -468,6 +488,36 @@ def _register_setup_routes(app):
         )
 
 
+def _seed_self_attendance():
+    """Idempotently ensure the Mode 2 (Employee Self Attendance) settings row
+       exists and seed four placeholder offices the first time. Admin edits the
+       real coordinates + radius from the Self Attendance panel afterwards.
+       Safe to run on every boot — no-op once seeded."""
+    from models import SelfAttendanceSettings, Office
+    try:
+        # Settings singleton (id=1) with defaults.
+        SelfAttendanceSettings.get()
+
+        # Seed offices only if the table is empty — never overwrite HR edits.
+        if Office.query.count() == 0:
+            seeds = [
+                # (code, name, city) — coordinates left blank for HR to fill.
+                ("KOL", "Kolkata Office", "Kolkata"),
+                ("DEL", "Delhi Office", "Delhi"),
+                ("MUM", "Mumbai Office", "Mumbai"),
+                ("DXB", "Dubai Office", "Dubai"),
+            ]
+            for code, name, city in seeds:
+                db.session.add(Office(code=code, name=name, city=city,
+                                      radius_m=100, is_active=True))
+            db.session.commit()
+            print(f"[bootstrap] seeded {len(seeds)} placeholder offices — "
+                  f"set coordinates in Admin → Self Attendance → Offices")
+    except Exception as e:
+        db.session.rollback()
+        print(f"[bootstrap] self-attendance seed skipped: {type(e).__name__}: {e}")
+
+
 def _patch_schema():
     """Lightweight at-boot schema patcher — adds new columns to existing tables
        so live DBs survive model changes without a wipe. No-op if everything is
@@ -495,6 +545,24 @@ def _patch_schema():
         ("workers", "grade",        "VARCHAR(20)"),
         # Face audit — snapshot photo of the Centre pose
         ("face_templates", "snapshot_b64", "TEXT"),
+        # -----------------------------------------------------------------
+        # Mode 2 — Employee Self Attendance. All added to the existing
+        # `attendance` table; nullable (except the type, which backfills to
+        # 'Kiosk') so every legacy kiosk row survives untouched.
+        # -----------------------------------------------------------------
+        ("attendance", "attendance_type", "VARCHAR(20) DEFAULT 'Kiosk' NOT NULL"),
+        ("attendance", "latitude",         "FLOAT"),
+        ("attendance", "longitude",        "FLOAT"),
+        ("attendance", "gps_accuracy",     "FLOAT"),
+        ("attendance", "location_name",    "VARCHAR(120)"),
+        ("attendance", "distance_m",       "FLOAT"),
+        ("attendance", "face_verified",    "BOOLEAN"),
+        ("attendance", "gps_verified",     "BOOLEAN"),
+        ("attendance", "outside_geofence", "BOOLEAN"),
+        ("attendance", "device",           "VARCHAR(160)"),
+        ("attendance", "browser",          "VARCHAR(160)"),
+        ("attendance", "ip_address",       "VARCHAR(64)"),
+        ("attendance", "self_photo_b64",   "TEXT"),
     ]
     for table, column, coldef in expected_columns:
         try:

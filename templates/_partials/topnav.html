@@ -2,6 +2,12 @@
 <nav class="pc-topnav">
   <a href="{{ url_for('index') }}" {% if request.endpoint=='index' %}class="active"{% endif %}>Home</a>
 
+  {# Mode 2 — Employee Self Attendance. Shown to any eligible office employee. #}
+  {% if can_self_attend %}
+    <a href="{{ url_for('self_att.page') }}"
+       {% if request.endpoint=='self_att.page' %}class="active"{% endif %}>Mark Attendance</a>
+  {% endif %}
+
   {% if current_user.role == ROLE_ADMIN %}
     <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
     <div class="pc-nav-group">
@@ -26,6 +32,14 @@
       </div>
     </div>
     <div class="pc-nav-group">
+      <a href="#">Self Attendance</a>
+      <div class="pc-nav-dropdown">
+        <a href="{{ url_for('admin.self_attendance_settings') }}">Settings</a>
+        <a href="{{ url_for('admin.offices') }}">Offices &amp; Geofences</a>
+        <a href="{{ url_for('admin.self_attendance_approvals') }}">HR Approvals</a>
+      </div>
+    </div>
+    <div class="pc-nav-group">
       <a href="#">Invoices</a>
       <div class="pc-nav-dropdown">
         <a href="{{ url_for('invoice.list_invoices') }}">All Invoices</a>
@@ -36,6 +50,7 @@
     <a href="{{ url_for('client.dashboard') }}">Dashboard</a>
     <a href="{{ url_for('client.roster') }}">Roster Approval</a>
     <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Queue</a>
+    <a href="{{ url_for('self_att.manager_approvals') }}">Team Self Attendance</a>
   {% elif current_user.role == ROLE_VENDOR_REP %}
     <a href="{{ url_for('vendor.dashboard') }}">Dashboard</a>
     <a href="{{ url_for('vendor.roster') }}">Daily Roster</a>

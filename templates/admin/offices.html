@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Offices{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Offices &amp; Geofences
+  <a class="pc-btn pc-btn-ghost" style="margin-left:auto;" href="{{ url_for('admin.self_attendance_settings') }}">Settings</a>
+  <a class="pc-btn pc-btn-primary" href="{{ url_for('admin.office_new') }}">+ New office</a>
+</h1>
+<div class="pc-card" style="background:#fff8e6; border-left:4px solid #d39e00; margin-bottom:14px;">
+  <p style="margin:0; font-size:13px; color:#555;">
+    Each office defines a geofence: a centre (latitude / longitude) and an allowed radius in metres.
+    Employees mark self attendance only when they're inside a geofence they're assigned to. Assign
+    employees to an office on its <em>Edit</em> page.
+  </p>
+</div>
+<div class="pc-card">
+  <table class="pc-table">
+    <thead><tr>
+      <th>Code</th><th>Name</th><th>City</th><th>Latitude</th><th>Longitude</th>
+      <th>Radius</th><th>Employees</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>
+      {% for o in rows %}
+      <tr>
+        <td><b>{{ o.code }}</b></td>
+        <td>{{ o.name }}</td>
+        <td>{{ o.city or '—' }}</td>
+        <td>{{ '%.5f'|format(o.latitude) if o.latitude is not none else '—' }}</td>
+        <td>{{ '%.5f'|format(o.longitude) if o.longitude is not none else '—' }}</td>
+        <td>{{ o.radius_m }} m</td>
+        <td>{{ o.workers|length }}</td>
+        <td>
+          {% if not o.is_geofence_ready %}<span class="pc-badge closed">no coords</span>
+          {% elif o.is_active %}<span class="pc-badge active">Active</span>
+          {% else %}<span class="pc-badge closed">Inactive</span>{% endif %}
+        </td>
+        <td><a href="{{ url_for('admin.office_edit', oid=o.id) }}">Edit</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="text-align:center; color:#888;">No offices yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

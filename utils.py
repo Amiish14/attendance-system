@@ -248,3 +248,89 @@ def parse_date(s: str | None) -> date | None:
         return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Mode 2 — Employee Self Attendance helpers
+# ---------------------------------------------------------------------------
+import math
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two lat/long points, in METRES.
+       Accurate to well under a metre at city scale — plenty for geofencing."""
+    R = 6371000.0  # Earth radius in metres
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlmb = math.radians(lon2 - lon1)
+    a = (math.sin(dphi / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2)
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def worker_can_self_attend(worker, settings) -> bool:
+    """Eligibility gate for Employee Self Attendance (Mode 2).
+
+       Policy (per HR): OFFICE STAFF ONLY — the in-house Procam employees whose
+       agency runs in 'none' approver mode. Field / gate workers (vendor & NPR
+       agencies, which use kiosk + dual approval) are excluded and keep using
+       the kiosk exclusively. Gate-guard / system accounts have no Worker
+       record and are therefore never eligible."""
+    from models import APPROVER_NONE
+    if settings is None or not settings.enable_self_attendance:
+        return False
+    if worker is None:
+        return False
+    ag = getattr(worker, "agency", None)
+    if ag is None or ag.approver_mode != APPROVER_NONE:
+        return False
+    return True
+
+
+def parse_user_agent(ua: str | None) -> tuple[str, str]:
+    """Best-effort (device_platform, browser) from a User-Agent string.
+       Deliberately dependency-free — good enough for the attendance audit
+       trail without pulling in a UA-parsing library."""
+    ua = ua or ""
+    u = ua.lower()
+    # Platform / device
+    if "android" in u:
+        device = "Android"
+    elif "iphone" in u:
+        device = "iPhone"
+    elif "ipad" in u:
+        device = "iPad"
+    elif "windows" in u:
+        device = "Windows"
+    elif "mac os" in u or "macintosh" in u:
+        device = "Mac"
+    elif "linux" in u:
+        device = "Linux"
+    else:
+        device = "Unknown device"
+    # Browser (order matters — Edge/Chrome/Safari overlap in the UA string)
+    if "edg/" in u or "edga/" in u:
+        browser = "Edge"
+    elif "opr/" in u or "opera" in u:
+        browser = "Opera"
+    elif "chrome" in u and "chromium" not in u:
+        browser = "Chrome"
+    elif "firefox" in u:
+        browser = "Firefox"
+    elif "safari" in u:
+        browser = "Safari"
+    else:
+        browser = "Unknown browser"
+    if "mobile" in u and browser != "Unknown browser":
+        browser += " Mobile"
+    return device[:160], browser[:160]
+
+
+def client_ip() -> str:
+    """Return the caller's IP, honouring a single X-Forwarded-For hop (Render
+       / any reverse proxy puts the real client first in the list)."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    return (request.remote_addr or "")[:64]

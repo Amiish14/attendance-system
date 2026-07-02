@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{% if o %}Edit{% else %}New{% endif %} office{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">{% if o %}Edit office{% else %}New office{% endif %}</h1>
+
+<form method="post" class="pc-card">
+  <div class="pc-form-row">
+    <div><label>Code *</label><input name="code" required value="{{ o.code if o else '' }}" placeholder="KOL"></div>
+    <div><label>Name *</label><input name="name" required value="{{ o.name if o else '' }}" placeholder="Kolkata Office"></div>
+    <div><label>City</label><input name="city" value="{{ o.city if o else '' }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <div style="flex:2;"><label>Address</label><input name="address" value="{{ o.address if o else '' }}"></div>
+  </div>
+
+  <h3>Geofence</h3>
+  <p style="font-size:12.5px; color:#888; margin:0 0 8px;">
+    Tip: open Google Maps, right-click the office location, and copy the “lat, long” pair it shows.
+  </p>
+  <div class="pc-form-row">
+    <div><label>Latitude *</label>
+      <input name="latitude" value="{{ o.latitude if o and o.latitude is not none else (s.default_office_latitude if s.default_office_latitude is not none else '') }}" placeholder="22.5726"></div>
+    <div><label>Longitude *</label>
+      <input name="longitude" value="{{ o.longitude if o and o.longitude is not none else (s.default_office_longitude if s.default_office_longitude is not none else '') }}" placeholder="88.3639"></div>
+    <div><label>Allowed radius (metres) *</label>
+      <input type="number" name="radius_m" min="10" value="{{ o.radius_m if o else (s.default_office_radius_m or 100) }}"></div>
+  </div>
+  <div class="pc-form-row">
+    <label><input type="checkbox" name="is_active" {% if not o or o.is_active %}checked{% endif %}> Active</label>
+  </div>
+
+  {% if o %}
+  <h3>Assigned employees <small style="color:#999; font-weight:400;">({{ eligible_workers|length }} eligible office staff)</small></h3>
+  <p style="font-size:12.5px; color:#888; margin:0 0 8px;">
+    Select the employees based at this office. Employees with no office assigned are validated against
+    every active office (nearest wins). Hold Ctrl / Cmd to select multiple.
+  </p>
+  <select name="worker_ids" multiple size="12" style="width:100%; max-width:520px; padding:6px;">
+    {% for w in eligible_workers %}
+      <option value="{{ w.id }}" {% if w.id in assigned_ids %}selected{% endif %}>
+        {{ w.code }} — {{ w.full_name }}{% if w.designation %} ({{ w.designation }}){% endif %}
+      </option>
+    {% endfor %}
+  </select>
+  {% else %}
+  <p style="font-size:12.5px; color:#888;">Save the office first, then re-open it to assign employees.</p>
+  {% endif %}
+
+  <div style="margin-top:14px;">
+    <button class="pc-btn pc-btn-primary" type="submit">Save office</button>
+    <a class="pc-btn pc-btn-ghost" href="{{ url_for('admin.offices') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

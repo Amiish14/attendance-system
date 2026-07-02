@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Self Attendance Settings{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Self Attendance Settings
+  <a class="pc-btn pc-btn-ghost" style="margin-left:auto;" href="{{ url_for('admin.offices') }}">Manage Offices</a>
+  <a class="pc-btn pc-btn-secondary" href="{{ url_for('admin.self_attendance_approvals') }}">HR Approvals</a>
+</h1>
+
+<div class="pc-card" style="background:#f7f9ff; border-left:4px solid #2b57c4; margin-bottom:14px;">
+  <p style="margin:0; font-size:13px; color:#555; line-height:1.6;">
+    These options control <strong>Attendance Mode 2 — Employee Self Attendance</strong>. The gate
+    <strong>Kiosk (Mode 1) is unaffected</strong> by anything on this page. Self attendance is available
+    to in-house office employees only; field / gate workers continue to use the kiosk.
+  </p>
+</div>
+
+<form method="post" class="pc-card">
+  <h3 style="margin-top:0;">Master switches</h3>
+  <div class="pc-form-row">
+    <label><input type="checkbox" name="enable_self_attendance" {% if s.enable_self_attendance %}checked{% endif %}> Enable Self Attendance</label>
+    <label><input type="checkbox" name="enable_face_verification" {% if s.enable_face_verification %}checked{% endif %}> Enable Face Verification</label>
+  </div>
+  <div class="pc-form-row">
+    <label><input type="checkbox" name="enable_gps" {% if s.enable_gps %}checked{% endif %}> Enable GPS capture</label>
+    <label><input type="checkbox" name="enable_geofence" {% if s.enable_geofence %}checked{% endif %}> Enable Geofence validation</label>
+  </div>
+  <div class="pc-form-row">
+    <label><input type="checkbox" name="require_live_camera" {% if s.require_live_camera %}checked{% endif %}> Require Live Camera (no uploads)</label>
+    <label><input type="checkbox" name="capture_photo" {% if s.capture_photo %}checked{% endif %}> Capture Photo with each punch</label>
+  </div>
+  <div class="pc-form-row">
+    <label style="background:#fff8e6; padding:8px 10px; border-left:3px solid #d39e00; border-radius:4px;">
+      <input type="checkbox" name="allow_outside_radius" {% if s.allow_outside_radius %}checked{% endif %}>
+      Allow attendance <strong>outside</strong> the office radius (records with an “Outside Office” flag instead of rejecting)
+    </label>
+  </div>
+
+  <h3>Thresholds &amp; rules</h3>
+  <div class="pc-form-row">
+    <div><label>Maximum GPS Accuracy (metres)</label>
+      <input type="number" name="max_gps_accuracy_m" min="1" value="{{ s.max_gps_accuracy_m }}">
+      <small style="color:#888;">Fixes worse than this are rejected. Lower = stricter.</small>
+    </div>
+    <div><label>Cooldown between punches (seconds)</label>
+      <input type="number" name="cooldown_seconds" min="0" value="{{ s.cooldown_seconds }}">
+      <small style="color:#888;">Blocks rapid-refresh / double punches.</small>
+    </div>
+  </div>
+  <div class="pc-form-row">
+    <div><label>Attendance window — start (IST, HH:MM)</label>
+      <input type="time" name="window_start" value="{{ s.window_start or '' }}"></div>
+    <div><label>Attendance window — end (IST, HH:MM)</label>
+      <input type="time" name="window_end" value="{{ s.window_end or '' }}"></div>
+    <div><label>Late mark after (IST, HH:MM)</label>
+      <input type="time" name="late_mark_after" value="{{ s.late_mark_after or '' }}">
+      <small style="color:#888;">IN punches after this are flagged Late.</small>
+    </div>
+  </div>
+
+  <h3>Default office geofence <small style="color:#999; font-weight:400;">(used only if no office coordinates are set)</small></h3>
+  <div class="pc-form-row">
+    <div><label>Default Latitude</label>
+      <input name="default_office_latitude" value="{{ s.default_office_latitude if s.default_office_latitude is not none else '' }}"></div>
+    <div><label>Default Longitude</label>
+      <input name="default_office_longitude" value="{{ s.default_office_longitude if s.default_office_longitude is not none else '' }}"></div>
+    <div><label>Default Radius (m)</label>
+      <input type="number" name="default_office_radius_m" value="{{ s.default_office_radius_m or 100 }}"></div>
+  </div>
+
+  <div style="margin-top:14px;">
+    <button class="pc-btn pc-btn-primary" type="submit">Save settings</button>
+    <a class="pc-btn pc-btn-ghost" href="{{ url_for('admin.dashboard') }}">Cancel</a>
+  </div>
+</form>
+
+<div class="pc-card">
+  <h3 style="margin-top:0;">Offices ({{ offices|length }})</h3>
+  <table class="pc-table">
+    <thead><tr><th>Code</th><th>Name</th><th>City</th><th>Coordinates</th><th>Radius</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for o in offices %}
+      <tr>
+        <td><b>{{ o.code }}</b></td>
+        <td>{{ o.name }}</td>
+        <td>{{ o.city or '—' }}</td>
+        <td>{% if o.is_geofence_ready %}{{ '%.5f'|format(o.latitude) }}, {{ '%.5f'|format(o.longitude) }}{% else %}<span style="color:#b00020;">not set</span>{% endif %}</td>
+        <td>{{ o.radius_m }} m</td>
+        <td>{% if o.is_active %}<span class="pc-badge active">Active</span>{% else %}<span class="pc-badge closed">Inactive</span>{% endif %}</td>
+        <td><a href="{{ url_for('admin.office_edit', oid=o.id) }}">Edit</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center; color:#888;">No offices yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

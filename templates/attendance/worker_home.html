@@ -41,6 +41,16 @@
 </div>
 {% endif %}
 
+{% if can_self_attend %}
+<div class="pc-card" style="background:#f2fbf4; border-left:4px solid #1a7f37;">
+  <h3 style="margin-top:0;">🟢 Mark your attendance from here</h3>
+  <p style="margin:0 0 10px; font-size:13.5px; color:#444; line-height:1.65;">
+    As office staff you can mark attendance directly after logging in — verified by
+    face recognition and your office location. Works on your phone too.
+  </p>
+  <a class="pc-btn pc-btn-primary" href="{{ url_for('self_att.page') }}">Mark Attendance</a>
+</div>
+{% else %}
 <div class="pc-card" style="background:#fdf2f3; border-left:4px solid var(--pc-red);">
   <h3 style="margin-top:0;">📍 Punching in / out is at the kiosk</h3>
   <p style="margin:0; font-size:13.5px; color:#444; line-height:1.65;">
@@ -55,6 +65,7 @@
     <li>Once both approve, that day counts toward your billing / payroll.</li>
   </ul>
 </div>
+{% endif %}
 
 <div class="pc-card">
   <h3>My recent attendance</h3>

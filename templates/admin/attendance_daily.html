@@ -22,22 +22,29 @@
   <table class="pc-table">
     <thead>
       <tr>
-        <th>Code</th><th>Worker</th><th>Department</th><th>Designation</th>
+        <th>Code</th><th>Worker</th><th>Department</th><th>Type</th>
         <th>IN</th><th>OUT</th><th>Hours</th><th>Vendor</th><th>Procam</th><th>Overall</th>
       </tr>
     </thead>
     <tbody>
       {% for a in rows %}
       {% set w = a.worker %}
-      {% set v = a.approval('Vendor') %}{% set c = a.approval('Client') %}
-      {% set vs = v.status if v else 'Pending' %}{% set cs = c.status if c else 'Pending' %}
-      {% set overall = 'Approved' if (vs == 'Approved' and cs == 'Approved')
+      {% set is_self = (a.attendance_type == 'Self') %}
+      {% if is_self %}
+        {% set mgr = a.approval('Manager') %}{% set hr = a.approval('HR') %}
+        {% set c1 = 'Manager' %}{% set c2 = 'HR' %}
+        {% set vs = (mgr.status if mgr else '—') %}{% set cs = (hr.status if hr else 'Pending') %}
+      {% else %}
+        {% set v = a.approval('Vendor') %}{% set c = a.approval('Client') %}
+        {% set vs = v.status if v else 'Pending' %}{% set cs = c.status if c else 'Pending' %}
+      {% endif %}
+      {% set overall = 'Approved' if a.is_dual_approved
                        else ('Declined' if (vs == 'Declined' or cs == 'Declined') else 'Pending') %}
       <tr>
         <td><b>{{ w.code }}</b></td>
         <td>{{ w.full_name }}</td>
         <td>{{ w.agency.name if w.agency else '—' }}</td>
-        <td>{{ w.skill.name if w.skill else '—' }}</td>
+        <td><span class="pc-badge {{ 'active' if is_self else '' }}">{{ a.attendance_type or 'Kiosk' }}</span></td>
         <td>{{ (a.punch_in_at | ist_time) or (a.captured_at | ist_time) or '—' }}</td>
         <td>{{ (a.punch_out_at | ist_time) or '—' }}</td>
         <td>{{ a.hours or '—' }}</td>
@@ -51,4 +58,41 @@
     </tbody>
   </table>
 </div>
+
+{# ---- Self Attendance (Mode 2) detail: face / GPS / geofence audit ---- #}
+{% set self_rows = rows | selectattr('attendance_type', 'equalto', 'Self') | list %}
+{% if self_rows %}
+<div class="pc-card">
+  <h3 style="margin-top:0;">Self Attendance detail ({{ self_rows|length }})</h3>
+  <div style="overflow-x:auto;">
+  <table class="pc-table">
+    <thead>
+      <tr>
+        <th>Code</th><th>Employee</th><th>Face</th><th>GPS</th><th>Office</th>
+        <th>Distance</th><th>Accuracy</th><th>Map</th><th>Device</th><th>Browser</th><th>IP</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in self_rows %}{% set w = a.worker %}
+      <tr>
+        <td><b>{{ w.code }}</b></td>
+        <td>{{ w.full_name }}</td>
+        <td>{% if a.face_verified %}<span class="pc-badge approved">✓</span>{% elif a.face_verified is none %}—{% else %}<span class="pc-badge rejected">✗</span>{% endif %}</td>
+        <td>{% if a.gps_verified %}<span class="pc-badge approved">✓</span>{% elif a.outside_geofence %}<span class="pc-badge rejected">Outside</span>{% elif a.gps_verified is none %}—{% else %}<span class="pc-badge rejected">✗</span>{% endif %}</td>
+        <td>{{ a.location_name or '—' }}</td>
+        <td>{{ (a.distance_m|round(0)|int ~ ' m') if a.distance_m is not none else '—' }}</td>
+        <td>{{ (a.gps_accuracy|round(0)|int ~ ' m') if a.gps_accuracy is not none else '—' }}</td>
+        <td>{% if a.latitude is not none and a.longitude is not none %}
+              <a href="https://www.google.com/maps?q={{ a.latitude }},{{ a.longitude }}" target="_blank" rel="noopener">View</a>
+            {% else %}—{% endif %}</td>
+        <td>{{ a.device or '—' }}</td>
+        <td>{{ a.browser or '—' }}</td>
+        <td>{{ a.ip_address or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
