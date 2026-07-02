@@ -26,7 +26,8 @@
       <div class="pc-nav-dropdown">
         <a href="{{ url_for('vendor.roster') }}">Vendor Roster</a>
         <a href="{{ url_for('client.roster') }}">Client Approval</a>
-        <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Queue</a>
+        <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Register</a>
+        <a href="{{ url_for('attendance.regularization_new') }}">Raise Regularization</a>
         <a href="{{ url_for('admin.face_enrolments') }}">Face Enrolments</a>
         <a href="{{ url_for('admin.import_employees') }}">Import PRERNA</a>
       </div>
@@ -49,7 +50,8 @@
   {% elif current_user.role == ROLE_PROCAM_REP %}
     <a href="{{ url_for('client.dashboard') }}">Dashboard</a>
     <a href="{{ url_for('client.roster') }}">Roster Approval</a>
-    <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Queue</a>
+    <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Register</a>
+    <a href="{{ url_for('attendance.regularization_new') }}">Raise Regularization</a>
     <a href="{{ url_for('self_att.manager_approvals') }}">Team Self Attendance</a>
   {% elif current_user.role == ROLE_VENDOR_REP %}
     <a href="{{ url_for('vendor.dashboard') }}">Dashboard</a>

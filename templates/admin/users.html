@@ -2,8 +2,17 @@
 {% block title %}Users{% endblock %}
 {% block content %}
 <h1 class="pc-page-h1">Users
-  <a class="pc-btn pc-btn-primary" style="margin-left:auto;" href="{{ url_for('admin.user_new') }}">+ New user</a>
+  <form method="post" action="{{ url_for('admin.reset_employee_logins') }}"
+        style="margin-left:auto;"
+        onsubmit="return confirm('Reset EVERY employee\'s password to their Employee ID? Usernames stay the same. Each employee must set a new password on next login.');">
+    <button class="pc-btn pc-btn-ghost" type="submit">🔑 Reset employee logins to Employee ID</button>
+  </form>
+  <a class="pc-btn pc-btn-primary" href="{{ url_for('admin.user_new') }}">+ New user</a>
 </h1>
+<p style="color:#888; font-size:12.5px; margin-top:-6px;">
+  Policy: every employee logs in with their <strong>Employee ID</strong> as both username and password,
+  and must set a new password on first login.
+</p>
 <div class="pc-card">
   <table class="pc-table">
     <thead><tr><th>Username</th><th>Display name</th><th>Designation (PRERNA)</th><th>Vertical</th><th>Grade</th><th>Access level</th><th>Agency</th><th>Active</th></tr></thead>

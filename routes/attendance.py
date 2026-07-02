@@ -256,14 +256,118 @@ def regularization_new():
                            projects=projects, workers=workers)
 
 
+def _regularization_query():
+    """Build a filtered Regularization query from the request args. Shared by
+       the register view and the Excel export so both apply identical filters.
+       Returns (query, filters_dict)."""
+    status = (request.args.get("status") or "All").strip()
+    q_text = (request.args.get("q") or "").strip()
+    project_id = request.args.get("project_id", type=int)
+    d_from = parse_date(request.args.get("from"))
+    d_to = parse_date(request.args.get("to"))
+
+    q = Regularization.query.join(Worker, Worker.id == Regularization.worker_id)
+    if status and status != "All":
+        q = q.filter(Regularization.status == status)
+    if q_text:
+        like = f"%{q_text}%"
+        q = q.filter(db.or_(Worker.full_name.ilike(like), Worker.code.ilike(like)))
+    if project_id:
+        q = q.filter(Regularization.project_id == project_id)
+    if d_from:
+        q = q.filter(Regularization.work_date >= d_from)
+    if d_to:
+        q = q.filter(Regularization.work_date <= d_to)
+    q = q.order_by(Regularization.created_at.desc())
+    filters = {"status": status, "q": q_text, "project_id": project_id,
+               "from": request.args.get("from") or "", "to": request.args.get("to") or ""}
+    return q, filters
+
+
 @bp.route("/regularization/queue")
 @login_required
 @role_required(ROLE_PROCAM_REP, ROLE_ADMIN)
 def regularization_queue():
-    rows = (Regularization.query
-            .filter_by(status="Pending")
-            .order_by(Regularization.created_at.desc()).all())
-    return render_template("attendance/regularization_queue.html", rows=rows)
+    """Full regularization register — every employee, all statuses, filterable.
+       Pending rows can be approved/declined inline."""
+    q, filters = _regularization_query()
+    rows = q.all()
+    # Summary counts are computed over ALL regularizations (unfiltered) so the
+    # cards give a stable at-a-glance total regardless of the current filter.
+    counts = {
+        "Pending": Regularization.query.filter_by(status="Pending").count(),
+        "Approved": Regularization.query.filter_by(status="Approved").count(),
+        "Declined": Regularization.query.filter_by(status="Declined").count(),
+    }
+    counts["Total"] = counts["Pending"] + counts["Approved"] + counts["Declined"]
+    projects = Project.query.order_by(Project.name).all()
+    return render_template("attendance/regularization_queue.html",
+                           rows=rows, filters=filters, counts=counts,
+                           projects=projects, shown=len(rows))
+
+
+@bp.route("/regularization/export.xlsx")
+@login_required
+@role_required(ROLE_PROCAM_REP, ROLE_ADMIN)
+def regularization_export():
+    """Excel of the currently-filtered regularization register."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    from flask import send_file
+    import io as _io
+    from utils import to_ist
+
+    q, _ = _regularization_query()
+    rows = q.all()
+
+    wb = Workbook(); ws = wb.active
+    ws.title = "Regularizations"
+    red = PatternFill("solid", fgColor="BC1D2F")
+    white_bold = Font(bold=True, color="FFFFFF")
+
+    headers = ["Code", "Employee", "Project", "Work Date", "Requested Status",
+               "Status", "Reason", "Requested By", "Decided By", "Decided At",
+               "Decision Remark"]
+    ncols = len(headers)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+    title = f"PROCAM — Attendance Regularizations ({len(rows)})"
+    ws.cell(row=1, column=1, value=title).font = Font(bold=True, color="FFFFFF", size=13)
+    ws.cell(row=1, column=1).fill = red
+    ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 26
+    for i, h in enumerate(headers, 1):
+        c = ws.cell(row=2, column=i, value=h)
+        c.font = white_bold; c.fill = red
+        c.alignment = Alignment(horizontal="center", vertical="center")
+
+    for i, r in enumerate(rows, start=3):
+        w = r.worker
+        dec_ist = to_ist(r.decided_at)
+        vals = [
+            w.code if w else "",
+            w.full_name if w else "",
+            r.project.name if r.project else "",
+            r.work_date.strftime("%d-%b-%Y") if r.work_date else "",
+            r.requested_status or "",
+            r.status or "",
+            r.reason or "",
+            r.requested_by.username if r.requested_by else "",
+            r.decided_by.username if r.decided_by else "",
+            dec_ist.strftime("%d-%b-%Y %H:%M") if dec_ist else "",
+            r.decision_remark or "",
+        ]
+        for col, val in enumerate(vals, start=1):
+            ws.cell(row=i, column=col, value=val)
+
+    widths = [12, 26, 22, 12, 16, 12, 40, 16, 16, 18, 30]
+    for i, wd in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = wd
+
+    buf = _io.BytesIO(); wb.save(buf); buf.seek(0)
+    fn = f"Procam_Regularizations_{date.today():%Y-%m-%d}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fn,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @bp.route("/regularization/<int:rid>/decide", methods=["POST"])

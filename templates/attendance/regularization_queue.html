@@ -1,29 +1,95 @@
 {% extends "base.html" %}
-{% block title %}Regularization queue{% endblock %}
+{% block title %}Regularization register{% endblock %}
 {% block content %}
-<h1 class="pc-page-h1">Regularization queue</h1>
+<h1 class="pc-page-h1">Attendance Regularizations
+  <a class="pc-btn pc-btn-ghost" style="margin-left:auto;"
+     href="{{ url_for('attendance.regularization_export', **filters) }}">📥 Export Excel</a>
+  <a class="pc-btn pc-btn-primary" href="{{ url_for('attendance.regularization_new') }}">+ New regularization</a>
+</h1>
+
+{# ---- Summary cards (overall totals, not just the current filter) ---- #}
+<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+  <div class="pc-card" style="flex:1; min-width:150px; margin:0;">
+    <div style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px;">Total</div>
+    <div style="font-size:24px; font-weight:800;">{{ counts.Total }}</div>
+  </div>
+  <div class="pc-card" style="flex:1; min-width:150px; margin:0; border-left:4px solid #d39e00;">
+    <div style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px;">Pending</div>
+    <div style="font-size:24px; font-weight:800; color:#a06400;">{{ counts.Pending }}</div>
+  </div>
+  <div class="pc-card" style="flex:1; min-width:150px; margin:0; border-left:4px solid #1a7f37;">
+    <div style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px;">Approved</div>
+    <div style="font-size:24px; font-weight:800; color:#1a7f37;">{{ counts.Approved }}</div>
+  </div>
+  <div class="pc-card" style="flex:1; min-width:150px; margin:0; border-left:4px solid #b00020;">
+    <div style="font-size:12px; color:#888; text-transform:uppercase; letter-spacing:.5px;">Declined</div>
+    <div style="font-size:24px; font-weight:800; color:#b00020;">{{ counts.Declined }}</div>
+  </div>
+</div>
+
+{# ---- Filters ---- #}
+<form method="get" class="pc-card" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap;">
+  <div><label>Status</label>
+    <select name="status" onchange="this.form.submit()">
+      {% for s in ['All', 'Pending', 'Approved', 'Declined'] %}
+      <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div><label>Employee (name / code)</label>
+    <input name="q" value="{{ filters.q }}" placeholder="Search…"></div>
+  <div><label>Project</label>
+    <select name="project_id">
+      <option value="">— Any —</option>
+      {% for p in projects %}
+      <option value="{{ p.id }}" {% if filters.project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div><label>From</label><input type="date" name="from" value="{{ filters.from }}"></div>
+  <div><label>To</label><input type="date" name="to" value="{{ filters.to }}"></div>
+  <button class="pc-btn pc-btn-primary" type="submit">Apply Filters</button>
+  <a class="pc-btn pc-btn-ghost" href="{{ url_for('attendance.regularization_queue') }}">Reset</a>
+</form>
+
+{# ---- Register table ---- #}
 <div class="pc-card">
+  <h3 style="margin-top:0;">Showing {{ shown }} record(s)</h3>
   <table class="pc-table">
-    <thead><tr><th>Worker</th><th>Project</th><th>Date</th><th>Status</th><th>Reason</th><th>Requested by</th><th>Decide</th></tr></thead>
+    <thead><tr>
+      <th>Employee</th><th>Project</th><th>Date</th><th>Requested</th><th>Status</th>
+      <th>Reason</th><th>Requested by</th><th>Decision</th>
+    </tr></thead>
     <tbody>
     {% for r in rows %}
       <tr>
         <td><b>{{ r.worker.full_name }}</b><br><span style="color:#999;font-size:11px;">{{ r.worker.code }}</span></td>
-        <td>{{ r.project.name }}</td>
+        <td>{{ r.project.name if r.project else '—' }}</td>
         <td>{{ r.work_date }}</td>
-        <td><span class="pc-badge info">{{ r.requested_status }}</span></td>
-        <td style="max-width:280px;">{{ r.reason }}</td>
+        <td>{{ r.requested_status }}</td>
+        <td>
+          <span class="pc-badge {{ 'approved' if r.status == 'Approved' else ('rejected' if r.status == 'Declined' else 'pending') }}">{{ r.status }}</span>
+        </td>
+        <td style="max-width:260px;">{{ r.reason }}</td>
         <td>{{ r.requested_by.username if r.requested_by else "—" }}</td>
         <td>
+          {% if r.status == 'Pending' %}
           <form method="post" action="{{ url_for('attendance.regularization_decide', rid=r.id) }}" style="display:flex; gap:6px;">
-            <input name="remark" placeholder="remark" style="width:140px;">
+            <input name="remark" placeholder="remark" style="width:120px;">
             <button class="pc-btn pc-btn-success" name="decision" value="Approved">Approve</button>
             <button class="pc-btn pc-btn-danger"  name="decision" value="Declined">Decline</button>
           </form>
+          {% else %}
+            <div style="font-size:12px; color:#666;">
+              by <b>{{ r.decided_by.username if r.decided_by else '—' }}</b>
+              {% if r.decided_at %}<br>{{ r.decided_at | ist }}{% endif %}
+              {% if r.decision_remark %}<br><span style="color:#999;">“{{ r.decision_remark }}”</span>{% endif %}
+            </div>
+          {% endif %}
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="7" style="text-align:center;color:#888;">Nothing pending.</td></tr>
+      <tr><td colspan="8" style="text-align:center;color:#888;">No regularizations match these filters.</td></tr>
     {% endfor %}
     </tbody>
   </table>

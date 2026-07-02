@@ -311,18 +311,18 @@ def worker_new():
         db.session.add(w)
         db.session.flush()
 
-        # create a login for the worker
+        # create a login for the worker — policy: login ID = password =
+        # Employee ID (the worker code), must change password on first login.
         if f.get("create_login"):
-            uname = f.get("username") or w.code
             u = User(
-                username=uname,
+                username=w.code,
                 display_name=w.full_name,
                 role=ROLE_WORKER,
                 worker_id=w.id,
                 agency_id=w.agency_id,
                 must_change_password=True,
             )
-            u.set_password(f.get("password") or w.code)
+            u.set_password(w.code)
             db.session.add(u)
         db.session.commit()
         flash(f"Worker {w.full_name} created.", "success")
@@ -417,6 +417,32 @@ def npr_next_code():
 def users():
     rows = User.query.order_by(User.username).all()
     return render_template("admin/users.html", rows=rows)
+
+
+@bp.route("/users/reset-employee-logins", methods=["POST"])
+@login_required
+@role_required(ROLE_ADMIN)
+def reset_employee_logins():
+    """Standardise every employee's login to their Employee ID.
+
+       Policy: password = Employee ID (the linked Worker.code), the existing
+       username is left unchanged, and the employee must set a new password on
+       next login. Only touches accounts linked to a Worker record — admin /
+       gate-guard / system users are skipped."""
+    users = User.query.filter(User.worker_id.isnot(None)).all()
+    n = 0
+    for u in users:
+        w = u.worker
+        if not w or not (w.code or "").strip():
+            continue
+        u.set_password(w.code)          # password = Employee ID
+        u.must_change_password = True   # force change on first login
+        u.is_active = True
+        n += 1
+    db.session.commit()
+    flash(f"Reset {n} employee login(s): password = Employee ID (username "
+          f"unchanged). Each must set a new password on next login.", "success")
+    return redirect(url_for("admin.users"))
 
 
 @bp.route("/users/new", methods=["GET", "POST"])

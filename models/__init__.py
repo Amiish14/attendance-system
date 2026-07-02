@@ -497,9 +497,12 @@ class SelfAttendanceSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     enable_self_attendance = db.Column(db.Boolean, default=True, nullable=False)
     enable_face_verification = db.Column(db.Boolean, default=True, nullable=False)
-    enable_gps = db.Column(db.Boolean, default=True, nullable=False)
-    enable_geofence = db.Column(db.Boolean, default=True, nullable=False)
-    allow_outside_radius = db.Column(db.Boolean, default=False, nullable=False)
+    # Phase 1: location controls are OFF by default so any employee can mark
+    # attendance from any location. The geofencing code + admin screens remain,
+    # so Phase 2 can re-enable GPS/geofence by simply toggling these on.
+    enable_gps = db.Column(db.Boolean, default=False, nullable=False)
+    enable_geofence = db.Column(db.Boolean, default=False, nullable=False)
+    allow_outside_radius = db.Column(db.Boolean, default=True, nullable=False)
     require_live_camera = db.Column(db.Boolean, default=True, nullable=False)
     capture_photo = db.Column(db.Boolean, default=True, nullable=False)
     # Reject GPS fixes whose reported accuracy is worse (larger) than this.

@@ -20,6 +20,12 @@ PROCAM Attendance System. It is **purely additive** — the existing gate **Kios
 The flow: **Login → Dashboard → Mark Attendance → Camera → Face Recognition →
 Location Verification → Attendance Recorded.**
 
+> **Phase 1 status:** GPS + geofencing are **disabled by default** — any employee
+> can mark attendance from any location, secured by face verification only. The
+> geofencing code and admin screens remain in place; Phase 2 re-enables them by
+> toggling *Enable GPS* / *Enable Geofence* on in Admin → Self Attendance →
+> Settings.
+
 ---
 
 ## 2. Who can use it
