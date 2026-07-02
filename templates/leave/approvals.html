@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Leave approvals — {{ stage|capitalize }}{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">
+  {% if stage == 'manager' %}Team Leave Approvals{% else %}Leave — HR Approvals{% endif %}
+  <a class="pc-btn pc-btn-ghost" style="margin-left:auto;" href="{{ url_for('leave.register') }}">Leave Register</a>
+</h1>
+<p style="color:#666; font-size:13.5px; max-width:900px;">
+  {% if stage == 'manager' %}
+    Leave requests from your direct reports awaiting your approval. Once you approve,
+    they go to HR for the final sign-off.
+  {% else %}
+    Leave requests that have cleared the manager step (or have no manager) and need
+    final HR sign-off.
+  {% endif %}
+</p>
+
+<form method="post">
+  <div class="pc-card">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <h3 style="margin:0;">Pending ({{ pending|length }})</h3>
+      <div style="margin-left:auto; display:flex; gap:6px;">
+        <button type="button" onclick="selectAll(true)" class="pc-btn pc-btn-ghost">Select all</button>
+        <button type="submit" name="action" value="approve" class="pc-btn pc-btn-success">✓ Approve</button>
+        <button type="submit" name="action" value="decline" class="pc-btn pc-btn-danger"
+                onclick="return confirm('Decline the selected leave requests?')">✗ Decline</button>
+      </div>
+    </div>
+    <table class="pc-table" style="margin-top:12px;">
+      <thead><tr>
+        <th style="width:30px;"><input type="checkbox" onchange="selectAll(this.checked)" id="select-all-box"></th>
+        <th>Code</th><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th>
+        <th>Reason</th>{% if stage == 'hr' %}<th>Manager</th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for r in pending %}{% set w = r.worker %}
+        <tr>
+          <td><input type="checkbox" name="leave_id" value="{{ r.id }}" class="row-cb"></td>
+          <td><b>{{ w.code }}</b></td>
+          <td>{{ w.full_name }}</td>
+          <td>{{ r.leave_type }}{% if r.half_day %} <span style="color:#888;">(½)</span>{% endif %}</td>
+          <td>{{ r.from_date }}</td>
+          <td>{{ r.to_date }}</td>
+          <td>{{ r.days }}</td>
+          <td style="max-width:260px;">{{ r.reason }}</td>
+          {% if stage == 'hr' %}
+          <td>{% if r.manager_status == 'NA' %}<span style="color:#999;">no manager</span>
+              {% else %}<span class="pc-badge {{ 'approved' if r.manager_status == 'Approved' else 'pending' }}">{{ r.manager_status }}</span>{% endif %}</td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 9 if stage == 'hr' else 8 }}" style="text-align:center; color:#888; padding:18px;">Nothing pending. 🎉</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+
+<script>
+function selectAll(on) {
+  document.querySelectorAll('.row-cb').forEach(cb => cb.checked = on);
+  document.getElementById('select-all-box').checked = on;
+}
+</script>
+{% endblock %}

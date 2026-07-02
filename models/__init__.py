@@ -530,3 +530,76 @@ class SelfAttendanceSettings(db.Model):
             db.session.add(s)
             db.session.commit()
         return s
+
+
+# ---------------------------------------------------------------------------
+# Leave module — any employee can apply for leave. Two-step Manager -> HR
+# approval (mirrors self-attendance). Leave types only; no balance tracking.
+# New table, so nothing existing is affected.
+# ---------------------------------------------------------------------------
+LEAVE_CASUAL = "Casual"
+LEAVE_SICK = "Sick"
+LEAVE_EARNED = "Earned"
+LEAVE_UNPAID = "Unpaid"
+LEAVE_TYPES = (LEAVE_CASUAL, LEAVE_SICK, LEAVE_EARNED, LEAVE_UNPAID)
+
+# Per-step / overall status values.
+LV_PENDING = "Pending"
+LV_APPROVED = "Approved"
+LV_DECLINED = "Declined"
+LV_NA = "NA"          # manager step when the employee has no line manager
+
+
+class LeaveRequest(db.Model):
+    __tablename__ = "leave_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    worker_id = db.Column(db.Integer, db.ForeignKey("workers.id"), nullable=False)
+    leave_type = db.Column(db.String(20), default=LEAVE_CASUAL, nullable=False)
+    from_date = db.Column(db.Date, nullable=False)
+    to_date = db.Column(db.Date, nullable=False)
+    half_day = db.Column(db.Boolean, default=False, nullable=False)
+    days = db.Column(db.Numeric(4, 1), default=Decimal("1.0"), nullable=False)
+    reason = db.Column(db.Text)
+
+    # Overall status — kept in sync with the two steps below via recompute().
+    status = db.Column(db.String(12), default=LV_PENDING, nullable=False, index=True)
+
+    # Step 1 — line manager. 'NA' when the employee has no manager on file.
+    manager_status = db.Column(db.String(12), default=LV_PENDING, nullable=False)
+    manager_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    manager_at = db.Column(db.DateTime)
+    manager_remark = db.Column(db.Text)
+
+    # Step 2 — HR / Admin (final).
+    hr_status = db.Column(db.String(12), default=LV_PENDING, nullable=False)
+    hr_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    hr_at = db.Column(db.DateTime)
+    hr_remark = db.Column(db.Text)
+
+    requested_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    worker = db.relationship("Worker")
+    requested_by = db.relationship("User", foreign_keys=[requested_by_id])
+    manager_by = db.relationship("User", foreign_keys=[manager_by_id])
+    hr_by = db.relationship("User", foreign_keys=[hr_by_id])
+
+    @property
+    def needs_manager(self) -> bool:
+        return self.manager_status != LV_NA
+
+    @property
+    def manager_cleared(self) -> bool:
+        """True when the manager step is satisfied (approved or not required)."""
+        return self.manager_status in (LV_APPROVED, LV_NA)
+
+    def recompute_status(self):
+        """Derive the overall status from the two steps and store it."""
+        if LV_DECLINED in (self.manager_status, self.hr_status):
+            self.status = LV_DECLINED
+        elif self.manager_cleared and self.hr_status == LV_APPROVED:
+            self.status = LV_APPROVED
+        else:
+            self.status = LV_PENDING
+        return self.status

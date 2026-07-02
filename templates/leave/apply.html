@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Apply for leave{% endblock %}
+{% block content %}
+<h1 class="pc-page-h1">Apply for Leave
+  {% if current_user.role in [ROLE_ADMIN, ROLE_PROCAM_REP] %}
+  <a class="pc-btn pc-btn-ghost" style="margin-left:auto;" href="{{ url_for('leave.register') }}">Leave Register</a>
+  {% endif %}
+</h1>
+
+<form method="post" class="pc-card" style="max-width:720px;">
+  {% if can_pick %}
+  <div class="pc-form-row">
+    <div><label>Employee *</label>
+      <select name="worker_id" required>
+        <option value="">— select employee —</option>
+        {% for w in workers %}<option value="{{ w.id }}">{{ w.full_name }} ({{ w.code }})</option>{% endfor %}
+      </select>
+      <small style="color:#888;">Leave blank rules apply to whoever you pick. Employees see only themselves.</small>
+    </div>
+  </div>
+  {% endif %}
+  <div class="pc-form-row">
+    <div><label>Leave type *</label>
+      <select name="leave_type" required>
+        {% for t in leave_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      </select>
+    </div>
+    <div><label>From date *</label><input type="date" name="from_date" id="lv-from" required></div>
+    <div><label>To date *</label><input type="date" name="to_date" id="lv-to"></div>
+  </div>
+  <div class="pc-form-row">
+    <label style="display:flex; align-items:center; gap:8px;">
+      <input type="checkbox" name="half_day" id="lv-half" onchange="toggleHalf()"> Half-day leave (single date, counts as 0.5)
+    </label>
+  </div>
+  <div class="pc-form-row">
+    <div style="flex:2;"><label>Reason *</label><textarea name="reason" required></textarea></div>
+  </div>
+  <button class="pc-btn pc-btn-primary" type="submit">Submit leave request</button>
+</form>
+
+<div class="pc-card">
+  <h3 style="margin-top:0;">My leave requests</h3>
+  <table class="pc-table">
+    <thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Status</th><th>Manager</th><th>HR</th><th>Reason</th></tr></thead>
+    <tbody>
+      {% for r in mine %}
+      <tr>
+        <td>{{ r.leave_type }}{% if r.half_day %} <span style="color:#888;">(½)</span>{% endif %}</td>
+        <td>{{ r.from_date }}</td>
+        <td>{{ r.to_date }}</td>
+        <td>{{ r.days }}</td>
+        <td><span class="pc-badge {{ 'approved' if r.status == 'Approved' else ('rejected' if r.status == 'Declined' else 'pending') }}">{{ r.status }}</span></td>
+        <td>{{ '—' if r.manager_status == 'NA' else r.manager_status }}</td>
+        <td>{{ r.hr_status }}</td>
+        <td style="max-width:240px;">{{ r.reason }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center; color:#888;">No leave requests yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function toggleHalf() {
+  var half = document.getElementById('lv-half').checked;
+  var to = document.getElementById('lv-to');
+  var from = document.getElementById('lv-from');
+  to.disabled = half;
+  if (half) to.value = from.value;
+}
+document.getElementById('lv-from').addEventListener('change', function(){
+  if (document.getElementById('lv-half').checked) document.getElementById('lv-to').value = this.value;
+});
+</script>
+{% endblock %}

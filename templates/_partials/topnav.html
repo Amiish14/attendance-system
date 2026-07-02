@@ -8,6 +8,10 @@
        {% if request.endpoint=='self_att.page' %}class="active"{% endif %}>Mark Attendance</a>
   {% endif %}
 
+  {# Leave — any employee can apply. #}
+  <a href="{{ url_for('leave.apply') }}"
+     {% if request.endpoint=='leave.apply' %}class="active"{% endif %}>Apply Leave</a>
+
   {% if current_user.role == ROLE_ADMIN %}
     <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
     <div class="pc-nav-group">
@@ -41,6 +45,14 @@
       </div>
     </div>
     <div class="pc-nav-group">
+      <a href="#">Leave</a>
+      <div class="pc-nav-dropdown">
+        <a href="{{ url_for('leave.register') }}">Leave Register</a>
+        <a href="{{ url_for('leave.manager_approvals') }}">Team Approvals</a>
+        <a href="{{ url_for('leave.hr_approvals') }}">HR Approvals</a>
+      </div>
+    </div>
+    <div class="pc-nav-group">
       <a href="#">Invoices</a>
       <div class="pc-nav-dropdown">
         <a href="{{ url_for('invoice.list_invoices') }}">All Invoices</a>
@@ -53,6 +65,8 @@
     <a href="{{ url_for('attendance.regularization_queue') }}">Regularization Register</a>
     <a href="{{ url_for('attendance.regularization_new') }}">Raise Regularization</a>
     <a href="{{ url_for('self_att.manager_approvals') }}">Team Self Attendance</a>
+    <a href="{{ url_for('leave.manager_approvals') }}">Team Leave</a>
+    <a href="{{ url_for('leave.register') }}">Leave Register</a>
   {% elif current_user.role == ROLE_VENDOR_REP %}
     <a href="{{ url_for('vendor.dashboard') }}">Dashboard</a>
     <a href="{{ url_for('vendor.roster') }}">Daily Roster</a>

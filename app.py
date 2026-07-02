@@ -69,6 +69,7 @@ def create_app(config_class=Config):
     from routes.kiosk import bp as kiosk_bp
     from routes.payroll import bp as payroll_bp
     from routes.self_attendance import bp as self_att_bp
+    from routes.leave import bp as leave_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -80,6 +81,7 @@ def create_app(config_class=Config):
     app.register_blueprint(kiosk_bp)
     app.register_blueprint(payroll_bp)  # /payroll, /payroll/worker/<id>, /payroll/export.xlsx
     app.register_blueprint(self_att_bp, url_prefix="/self")  # Mode 2 — Employee Self Attendance
+    app.register_blueprint(leave_bp, url_prefix="/leave")    # Leave module
 
     # Expose the self-attendance settings + per-user eligibility to every
     # template so the nav/cards can show or hide the "Mark Attendance" entry.
